@@ -1,0 +1,18 @@
+# Build-Ausgabe
+dist/
+
+# Node
+node_modules/
+npm-debug.log*
+.npm/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Lokale Umgebung
+.env
+.env.local

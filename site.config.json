@@ -1,0 +1,30 @@
+{
+  "title": "Reisearchiv",
+  "tagline": "Unser digitales Urlaubs-Tagebuch",
+  "description": "Ein persönliches digitales Reisearchiv: Urlaube, Tagebuch-Einträge und Bildergalerien an einem Ort.",
+  "author": "Lennox",
+  "language": "de",
+  "locale": "de_DE",
+  "timeZone": "Europe/Berlin",
+
+  "siteUrl": "https://lencraft151-cloud.github.io/Tagebuch/",
+  "basePath": "/Tagebuch/",
+
+  "repo": {
+    "owner": "lencraft151-cloud",
+    "name": "Tagebuch",
+    "branch": "main",
+    "contentDir": "content/trips",
+    "mediaDir": "content/media"
+  },
+
+  "theme": {
+    "defaultMode": "system",
+    "accent": "#c2683a",
+    "useGoogleFonts": true
+  },
+
+  "footer": {
+    "note": "Gebaut mit Liebe zum Detail · gehostet auf GitHub Pages"
+  }
+}

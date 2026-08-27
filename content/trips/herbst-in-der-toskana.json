@@ -1,0 +1,37 @@
+{
+  "id": "trip-toskana-entwurf",
+  "slug": "herbst-in-der-toskana",
+  "title": "Herbst in der Toskana",
+  "location": "Italien",
+  "startDate": "2026-10-10",
+  "endDate": "2026-10-18",
+  "status": "draft",
+  "featured": false,
+  "publishFrom": "",
+  "publishUntil": "",
+  "onExpire": "hide",
+  "createdAt": "2026-08-25T15:00:00.000Z",
+  "updatedAt": "2026-08-25T15:00:00.000Z",
+  "description": "Entwurf: Noch nicht veröffentlicht und deshalb weder auf der Startseite noch über einen direkten Link erreichbar. Entwürfe werden gar nicht erst mit auf die Website gebaut.",
+  "coverImage": {
+    "id": "img-026",
+    "src": "media/weinberge.png",
+    "thumb": "media/weinberge-thumb.png",
+    "width": 1200,
+    "height": 800,
+    "placeholder": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAIAAACDRijCAAADAklEQVR42lWUvY4cRRSF69Z/V/fsrMfsml0iS8iSJUsIERGaDELvEyA5cYJIHAwCMhOQkCAR8zg8ATEka1vrGc1PV1fXrbqFqntsidu3bielT+ec6i54evNCaa2UVrWk0UIrsWjk/YWWEjBlxoioADBbN4k+pH2PQ8xHjyFijIiI3ge4+fZ7rbXSlWYmkNW80dwZ0RjeNYooRUxEhQpIIWMqhyHt+hiRgDHK+dCH3gd4/t1Lo7U2ymp11prOqa5RjRFWgeBFiQKMMCFRScRSBsyQCfYe+yFFzJjo6MOxH+HlD2tjtLPmrLPOKqtF55RRzCreGGm1EMByxohjiBgiBWRDLD5kP9IwpnDqCK9e/WiM7pzpnHGNtlo01R1Ug0ZoyQVnrGRMMcYaTYjFj2Wi0DDmiYXjiPD7bz8Zo221JhsrmxqNcEY6K62WagJBoUyIiUbMIVZEH/JEmUGpgv784+dKMcoYYbW0ms/dGFmzk1xIZR984W//ShgxlREpRPIBhzENYw51VlHw6y/PuQCrVduYj5bdg9XZeWu1Ai1BKyEFcGDSXST/NueSiqismI8Dvt7stgfvQ4yYGTFYr2+UklKKRJlzWLTNsm2uVour1dnVvbazCoABsMJgRLrb+X/vdreb/WbfY6KUckoZsTas18/2vX+z3YUYOQej1fXl6uH1RXUF0NZzVMDYrg9//3P7+m47BLRGLVyzWnTL1qU8gWKGr599nomE4FwArwUAYLS8vry3bJ3W0g/jm+qiL4WVWqxQfRGVrjGfXNy3SiEmePrNEyG5EPCBVUnASmFjRK2kVILNVRimdNgHIbhzun7rVI8zJzocAnz51aNxxJRIKr5aLaxVwFmMabvtcybO+fm5azsDjHkf37070iTHWnW+dEQFMW82xzAgPPrsmnOYGzg4Z4gIU66qGJuH1kJK4fuxsPfuShGcS8G9jzlPf/WnTz6uFMGhPjAtNrtjM+x9lXIaU0Z1zupoBj18fDmDTuFU1gn0fw47cSY5NEc+xzTdDP8BiToHo3+F/7MAAAAASUVORK5CYII=",
+    "alt": "Weinberge im Herbst",
+    "caption": ""
+  },
+  "entries": [
+    {
+      "id": "e-t1",
+      "date": "2026-10-10",
+      "time": "",
+      "title": "Idee: Weinlese",
+      "location": "Chianti",
+      "text": "Notizen für die Planung – hier entsteht der Eintrag später.",
+      "images": []
+    }
+  ]
+}

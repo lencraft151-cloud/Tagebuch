@@ -1,0 +1,71 @@
+name: Website bauen und veröffentlichen
+
+on:
+  # Jede Änderung an Inhalten oder Code veröffentlicht die Website neu.
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '.gitignore'
+  # Regelmäßiger Neubau, damit Veröffentlichungs- und Ablaufzeitpunkte
+  # auch in Sitemap, Meta-Daten und vorgerendertem HTML nachgezogen werden.
+  schedule:
+    - cron: '17 */6 * * *'
+  # Manuell aus dem Actions-Tab startbar.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Nur ein Deployment gleichzeitig. Laufende Deployments werden nicht
+# abgebrochen; ältere wartende Läufe werden verworfen.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Bauen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Inhalte prüfen
+        run: npm run check
+
+      - name: GitHub Pages konfigurieren
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Website bauen
+        run: npm run build
+        env:
+          # Liefert den korrekten Unterpfad – auch bei eigener Domain.
+          SITE_BASE: ${{ steps.pages.outputs.base_path }}
+          SITE_URL: ${{ steps.pages.outputs.origin }}
+
+      - name: Artefakt hochladen
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Veröffentlichen
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Auf GitHub Pages veröffentlichen
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,68 @@
+{
+  "id": "trip-norwegen-2026",
+  "slug": "winterreise-norwegen",
+  "title": "Winterreise Norwegen",
+  "location": "Lofoten",
+  "startDate": "2026-12-05",
+  "endDate": "2026-12-14",
+  "status": "published",
+  "featured": false,
+  "publishFrom": "2026-12-20T12:00",
+  "publishUntil": "",
+  "onExpire": "hide",
+  "createdAt": "2026-08-20T10:00:00.000Z",
+  "updatedAt": "2026-08-20T10:00:00.000Z",
+  "description": "Geplante Reise auf die Lofoten – dieser Eintrag ist bereits fertig, wird für Besucher aber erst zum eingestellten Zeitpunkt sichtbar.\n\nSo lässt sich ein Urlaub im Voraus vorbereiten und punktgenau veröffentlichen.",
+  "coverImage": {
+    "id": "img-023",
+    "src": "media/hafen-blaue-stunde.png",
+    "thumb": "media/hafen-blaue-stunde-thumb.png",
+    "width": 1200,
+    "height": 800,
+    "placeholder": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAIAAACDRijCAAADIUlEQVR42jWTy48cNRCHXW6/2t3zSpbJrjaT7JJkhUIEQgoHJG4IIcQBCc5c+WO5cEA57CEoCNiQTHYyPTPtbr9RecCW7VK3fp+rXFWwfPh5SplWPGeSSa4oY0I07URIRWkFAEBxeuf6w24cTIoppZhySjECEEoh50RyguXlF+10ruompQxAuRAhBM5FVTFKKa0oEABKCSGjMYM5hBBjDBGPkGKIKVCAWtewevo1pazcS6XStdaEEM6FkJIzTgihFfoVYxiMCSEE70PweDoXgk/RxxjwtgfPvq0YrypeMX7UCyGUqqWUQkrGOaU0xei9K2LvcFjnXAG54H0sLHj8/MeKCc5FgaC+GFLhUkIIinHloyvIsHYcBtzt6J3FC7yPwcPTL39iTMi6ViUupVRBCoUcKbio2DG06H1A/WgNjt4YY8fRORvQWQeffvUzusOF0rppWl1YOfqh32vdDOZw9dHHqq5DjM756xe/Hfp9M5kbY7rtJsYUgs8pY/KePP9B6nYsv7019y+vHlw83qxvXvz6y/nq4eubv7757nul6j//ePXP67+ttbtuS9DBNPR7Lut+t5G6Dd7B3fufSd2mlKWsvbPL84vN25uT5dlhv1/eW67fvLl8dPX7y+vz1cWrl9f3zlbd+42sdXkrS0g+dLeTxbLv3sH0gyuhGm9HpVvv3GR2Z9/dttPFYEzbtrtuuzw9fbdeL+6e3K7fTmfzbrtp2omzFuuXEDv0XKroPUxOngilvbOybtw4Kt3YcWiadhjMZDrfd9v54s52+346m+26TjeNORzqpnXO5hQBqB0NY8y7EfTiEeNYzYyLnDKXyo6jECKlxIWwo9VNM5he1XoYjBTS2rFUf3ljkqN3lLEcA8zOPqEVA0IqxmNMqtaMc5JJf9iVrJmT5TJn4r33zsaIpQQAGZstEEJC8JTSnCPMTp8RoBQ7q6JVRXFh4WCfMUYBCCGozDnhSvE4YygmdjB+TQHqxYcIgurYbrgXzH9GARFCcsZAUgkHj1zIhYLdTxLIyQpltMIkFDEhxQtKS1rQHwpwBOSU/sem4xsVChr/Am0kHY+mxmtDAAAAAElFTkSuQmCC",
+    "alt": "Blaue Stunde über dem Hafen",
+    "caption": ""
+  },
+  "entries": [
+    {
+      "id": "e-n1",
+      "date": "2026-12-05",
+      "time": "14:00",
+      "title": "Anreise im Dunkeln",
+      "location": "Svolvær",
+      "text": "Um zwei Uhr nachmittags dämmert es schon. Der Flug ging über schneebedeckte Berge, dann kam das Meer und dahinter eine Kette aus Zacken.",
+      "images": [
+        {
+          "id": "img-024",
+          "src": "media/hafen-blaue-stunde.png",
+          "thumb": "media/hafen-blaue-stunde-thumb.png",
+          "width": 1200,
+          "height": 800,
+          "placeholder": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAIAAACDRijCAAADIUlEQVR42jWTy48cNRCHXW6/2t3zSpbJrjaT7JJkhUIEQgoHJG4IIcQBCc5c+WO5cEA57CEoCNiQTHYyPTPtbr9RecCW7VK3fp+rXFWwfPh5SplWPGeSSa4oY0I07URIRWkFAEBxeuf6w24cTIoppZhySjECEEoh50RyguXlF+10ruompQxAuRAhBM5FVTFKKa0oEABKCSGjMYM5hBBjDBGPkGKIKVCAWtewevo1pazcS6XStdaEEM6FkJIzTgihFfoVYxiMCSEE70PweDoXgk/RxxjwtgfPvq0YrypeMX7UCyGUqqWUQkrGOaU0xei9K2LvcFjnXAG54H0sLHj8/MeKCc5FgaC+GFLhUkIIinHloyvIsHYcBtzt6J3FC7yPwcPTL39iTMi6ViUupVRBCoUcKbio2DG06H1A/WgNjt4YY8fRORvQWQeffvUzusOF0rppWl1YOfqh32vdDOZw9dHHqq5DjM756xe/Hfp9M5kbY7rtJsYUgs8pY/KePP9B6nYsv7019y+vHlw83qxvXvz6y/nq4eubv7757nul6j//ePXP67+ttbtuS9DBNPR7Lut+t5G6Dd7B3fufSd2mlKWsvbPL84vN25uT5dlhv1/eW67fvLl8dPX7y+vz1cWrl9f3zlbd+42sdXkrS0g+dLeTxbLv3sH0gyuhGm9HpVvv3GR2Z9/dttPFYEzbtrtuuzw9fbdeL+6e3K7fTmfzbrtp2omzFuuXEDv0XKroPUxOngilvbOybtw4Kt3YcWiadhjMZDrfd9v54s52+346m+26TjeNORzqpnXO5hQBqB0NY8y7EfTiEeNYzYyLnDKXyo6jECKlxIWwo9VNM5he1XoYjBTS2rFUf3ljkqN3lLEcA8zOPqEVA0IqxmNMqtaMc5JJf9iVrJmT5TJn4r33zsaIpQQAGZstEEJC8JTSnCPMTp8RoBQ7q6JVRXFh4WCfMUYBCCGozDnhSvE4YygmdjB+TQHqxYcIgurYbrgXzH9GARFCcsZAUgkHj1zIhYLdTxLIyQpltMIkFDEhxQtKS1rQHwpwBOSU/sem4xsVChr/Am0kHY+mxmtDAAAAAElFTkSuQmCC",
+          "alt": "Ankunft im Hafen",
+          "caption": "Ankunft im Hafen"
+        }
+      ]
+    },
+    {
+      "id": "e-n2",
+      "date": "2026-12-09",
+      "time": "20:30",
+      "title": "Polarlicht",
+      "location": "Reine",
+      "text": "Zwei Stunden in der Kälte gestanden und gewartet. Dann kam es – erst blass, dann grün und in Bewegung, quer über den ganzen Himmel.",
+      "images": [
+        {
+          "id": "img-025",
+          "src": "media/bergsee-morgen.png",
+          "thumb": "media/bergsee-morgen-thumb.png",
+          "width": 1200,
+          "height": 800,
+          "placeholder": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAIAAACDRijCAAAC+0lEQVR42j1TS4sdRRQ+j3p0970zo0NmZYYBda8ug4gLZ5Ol4E50J/4Kd7NwIxiFrBJEEBEX/p+IgqBZRDMxN8P07ao6D6me4Onuojbn43s1fvHlV+M4cIjAHCIPKcUYOTBxIOIiXs2buDqoWWYC93mpV/MS0Nh1WYq2Os8zXty7f7jdxL4eUopDjjnFGCJxqOZVoamLQRHbV12aiKib1dZchVxNmtR6fT3j1w+/P9hMOaeUwpjj2C+RmQFZHKu6AYnBvul1kbm02rSJtCZuEsE7UCtSCt7/4aftNGzGYTPmacxDjtshGpACqmM1qAKL2CJWmlXR/4ECeCZvtdZaWlnwwc+/bDdDZCbAEEJgOpwyhcAxTpvRgKpCES9iRayKNdHWRLsuN5VlWVqtUgve++5HNUfAnFOO3SnmQEyIhETTNA7jkIYcUxKDph3opU21LqXUlVGXdvHtwyHnjtL9jjEEDkFUn/zz7PLZztyHYTg5uXX0ylEHHXKIIcSgXWNr7QanlGWPF9882GymlFLuwYd/d1e///Hnk78v3QERAREcHGDI6fbt187OTnNObtYtYDTV3W73+K/Hvz76Dd9+/+7p6dnxrZOc8vW83y+FiJu0q6udu+U8TpuDEAIAuDsAHG4ns3r59Kk7qAIiqYqp4Ovv3CGilMfj45PtwREgvnjxfPf80gEQ+odIh0ev5jyUZVmWednP/nIM3KfNQU5ZRfCNd89jb9EQc2YOgNgjkX4g9hwBKcXEzNqnJ2+upv0lJGZ2VTPF808/H4aRQyBmIlL31qTUpmZ+wwlpDYBTWl0MbGZEaL3VVVpb9vv9POMHn3zWIZhDiEjUmxS4+0xESDcXJPLVIVXz9VERsHV0rUNreOejj2NMHDjE/mfQiknMAOgI1iPDvrqaLaI3624GbtBxmq8y8a27H3ZdIeDKqleRaGVDAGgOtobl3oEQAXpYYp1ar6WJuKlKwzffO0cONzYQMfRK89ogWs8uboVaDfNObkXpqkwF9CWp/wCvBiyId8QaRQAAAABJRU5ErkJggg==",
+          "alt": "Warten in der Kälte",
+          "caption": "Warten in der Kälte"
+        }
+      ]
+    }
+  ]
+}
