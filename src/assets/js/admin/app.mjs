@@ -260,17 +260,19 @@ async function handleListAction(action, item) {
   if (action === 'delete') {
     const ok = await confirmDialog({
       title: 'Urlaub löschen?',
-      text: `„${trip.title}“ wird mit allen Einträgen aus dem Repository gelöscht. Die hochgeladenen Bilder bleiben erhalten.`,
+      text: `„${trip.title}“ wird mit allen Einträgen gelöscht. Bilder, die nur hier verwendet werden, werden ebenfalls entfernt.`,
       confirmLabel: 'Endgültig löschen'
     });
     if (!ok) return;
 
     setLoading(true, 'Wird gelöscht …');
     try {
+      const previousPaths = mediaPathsOf(trip);
       await github.deleteFile({ path: item.path, sha: item.sha, message: `Urlaub gelöscht: ${trip.title}` });
       state.trips = state.trips.filter((t) => t !== item);
+      const removed = await cleanUpMedia(previousPaths, null);
       renderList();
-      toast('Urlaub gelöscht.', 'success');
+      toast(`Urlaub gelöscht${removed ? ` · ${removed} Bilddatei(en) entfernt` : ''}.`, 'success');
       watchDeploy();
     } catch (error) {
       toast(error.message, 'error');
@@ -359,6 +361,68 @@ async function persistTrip(item, message) {
       renderList();
     }
   }
+}
+
+/* ------------------------------------------------------- Medien aufräumen -- */
+
+let mediaShaCache = null;
+
+async function mediaShas(force = false) {
+  if (!mediaShaCache || force) {
+    const items = await github.listDir(MEDIA_DIR);
+    mediaShaCache = new Map(items.filter((i) => i.type === 'file').map((i) => [i.name, i.sha]));
+  }
+  return mediaShaCache;
+}
+
+/** Alle Bildpfade einer Reise (Titelbild, Einträge, jeweils Voll- und Vorschaubild). */
+function mediaPathsOf(trip) {
+  const paths = new Set();
+  const add = (image) => {
+    if (image?.src) paths.add(image.src);
+    if (image?.thumb) paths.add(image.thumb);
+  };
+  if (!trip) return paths;
+  add(trip.coverImage);
+  for (const entry of trip.entries || []) for (const image of entry.images || []) add(image);
+  return paths;
+}
+
+/**
+ * Löscht Bilddateien, die nach dem Speichern von keiner Reise mehr verwendet
+ * werden. Bewusst erst nach dem Speichern: Solange die Änderung nicht
+ * geschrieben ist, könnte sonst eine noch referenzierte Datei verschwinden.
+ */
+async function cleanUpMedia(previousPaths, keptTrip) {
+  const stillUsed = new Set();
+  for (const item of state.trips) {
+    const trip = item.trip.id === keptTrip?.id ? keptTrip : item.trip;
+    for (const path of mediaPathsOf(trip)) stillUsed.add(path);
+  }
+  if (keptTrip) for (const path of mediaPathsOf(keptTrip)) stillUsed.add(path);
+
+  const orphans = [...previousPaths].filter((path) => !stillUsed.has(path) && path.startsWith('media/'));
+  if (!orphans.length) return 0;
+
+  let removed = 0;
+  try {
+    const shas = await mediaShas(true);
+    for (const orphan of orphans) {
+      const name = orphan.replace(/^media\//, '');
+      const sha = shas.get(name);
+      if (!sha) continue;
+      try {
+        await github.deleteFile({ path: `${MEDIA_DIR}/${name}`, sha, message: `Nicht mehr verwendetes Bild entfernt: ${name}` });
+        shas.delete(name);
+        removed += 1;
+      } catch (error) {
+        console.warn(`Bild ${name} konnte nicht gelöscht werden:`, error);
+      }
+    }
+  } catch (error) {
+    console.warn('Bilder konnten nicht aufgeräumt werden:', error);
+  }
+  return removed;
 }
 
 /* ================================================================ Editor === */
@@ -728,7 +792,7 @@ function wireEntryCard(card, entry) {
   $('[data-delete-entry]', card).addEventListener('click', async () => {
     const ok = await confirmDialog({
       title: 'Tag löschen?',
-      text: `„${entry.title}“ wird aus diesem Urlaub entfernt. Die Bilder bleiben im Repository.`,
+      text: `„${entry.title}“ wird aus diesem Urlaub entfernt. Nicht mehr verwendete Bilder werden beim Speichern gelöscht.`,
       confirmLabel: 'Löschen'
     });
     if (!ok) return;
@@ -890,7 +954,7 @@ function renderEntryImages(card, entry) {
       if (action === 'delete') {
         const ok = await confirmDialog({
           title: 'Bild entfernen?',
-          text: 'Das Bild wird aus diesem Tag entfernt. Die Datei bleibt im Repository erhalten.',
+          text: 'Das Bild wird aus diesem Tag entfernt. Wird es nirgendwo sonst verwendet, wird die Datei beim Speichern auch aus dem Repository gelöscht.',
           confirmLabel: 'Entfernen'
         });
         if (!ok) return;
@@ -1002,13 +1066,21 @@ async function saveCurrent() {
   trip.slug = uniqueSlug(trip.slug || trip.title, taken);
   trip.updatedAt = nowStamp();
 
+  const previousPaths = mediaPathsOf(state.trips.find((t) => t.trip.id === trip.id)?.trip);
+
   const record = await persistTrip(
     { trip, path: state.currentPath, sha: state.currentSha },
     `Urlaub gespeichert: ${trip.title}`
   );
 
   if (record) {
-    state.current = normalizeTrip(structuredClone(record.trip));
+    const removed = await cleanUpMedia(previousPaths, record.trip);
+    if (removed) toast(`${removed} nicht mehr verwendete${removed === 1 ? 's Bild' : ' Bilder'} gelöscht.`);
+
+    // Wichtig: state.current NICHT ersetzen. Die Formularfelder und
+    // Bild-Aktionen im DOM halten Referenzen auf genau diese Objekte –
+    // eine frische Kopie würde alle folgenden Änderungen ins Leere laufen
+    // lassen. In der Liste liegt ohnehin eine eigene, normalisierte Fassung.
     state.currentPath = record.path;
     state.currentSha = record.sha;
     markDirty(false);

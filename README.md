@@ -142,6 +142,10 @@ Besucher sehen den Bereich nicht. Lege dir ein Lesezeichen an.
 | Bildunterschriften | Feld unter jedem Bild |
 | Bild als Titelbild setzen | Stern-Symbol auf dem Bild |
 | Bilder sortieren / entfernen | Pfeil- und Papierkorb-Symbole auf dem Bild |
+
+Entfernte Bilder werden beim **Speichern** auch als Datei aus dem Repository
+gelöscht – aber nur, wenn sie von keiner anderen Reise mehr verwendet werden.
+So bleibt das Repository schlank, ohne dass ein noch benötigtes Bild verschwindet.
 | Adresse (URL) ändern | Editor → **URL-Kürzel** |
 
 Tastenkürzel: <kbd>Strg</kbd>/<kbd>Cmd</kbd> + <kbd>S</kbd> speichert.
