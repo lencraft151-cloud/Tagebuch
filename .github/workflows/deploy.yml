@@ -2,8 +2,9 @@ name: Website bauen und veröffentlichen
 
 on:
   # Jede Änderung an Inhalten oder Code veröffentlicht die Website neu.
+  # Veröffentlicht wird ausschließlich der Standard-Branch des Repositories –
+  # unabhängig davon, ob er "main", "master" oder anders heißt (siehe Job unten).
   push:
-    branches: [main]
     paths-ignore:
       - 'README.md'
       - 'docs/**'
@@ -30,6 +31,8 @@ jobs:
   build:
     name: Bauen
     runs-on: ubuntu-latest
+    # Pushes auf Feature-Branches lösen keine Veröffentlichung aus.
+    if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v4

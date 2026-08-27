@@ -43,7 +43,8 @@ Im Repository: **Settings → Pages → Build and deployment → Source: `GitHub
 ### 3. Ersten Build abwarten
 
 Unter **Actions → „Website bauen und veröffentlichen“** läuft der Workflow automatisch
-bei jedem Push nach `main`. Nach etwa einer Minute ist die Seite erreichbar:
+bei jedem Push auf den **Standard-Branch** des Repositories (egal ob er `main`,
+`master` oder anders heißt). Nach etwa einer Minute ist die Seite erreichbar:
 
 ```
 https://<benutzername>.github.io/<repository>/
@@ -328,6 +329,7 @@ Der Build legt dann automatisch eine `CNAME`-Datei an; `basePath` wird zu `/`.
 | Problem | Ursache und Lösung |
 | --- | --- |
 | Workflow bricht mit „Get Pages site failed“ ab | **Settings → Pages → Source** auf **GitHub Actions** stellen |
+| Workflow läuft, baut aber nichts | Der Push ging auf einen Nebenzweig. Veröffentlicht wird nur der Standard-Branch (**Settings → Branches**) |
 | Website zeigt 404 | Erster Build noch nicht durch, oder `basePath` passt nicht. Im Workflow wird er automatisch gesetzt |
 | Bilder und Styles fehlen | Meist ein falscher `basePath`. Lokal muss er zum Ordner passen (`/Tagebuch/`) |
 | Anmeldung: „Token ungültig oder abgelaufen“ | Neues Token erstellen; Fine-grained Tokens laufen ab |
