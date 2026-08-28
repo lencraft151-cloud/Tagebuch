@@ -40,7 +40,7 @@ jobs:
       - name: Node einrichten
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Inhalte prüfen
         run: npm run check
@@ -48,6 +48,11 @@ jobs:
       - name: GitHub Pages konfigurieren
         id: pages
         uses: actions/configure-pages@v5
+        with:
+          # Aktiviert GitHub Pages beim ersten Lauf selbst und stellt die
+          # Quelle auf "GitHub Actions" - spart den manuellen Schritt in den
+          # Repository-Einstellungen.
+          enablement: true
 
       - name: Website bauen
         run: npm run build
