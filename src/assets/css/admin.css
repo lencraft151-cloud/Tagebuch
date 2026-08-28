@@ -230,8 +230,9 @@ body.admin {
   font-size: 0.86rem;
 }
 .publish__deletions p { color: var(--muted); font-size: 0.82rem; margin: 0.3rem 0 0.5rem; }
-.publish__deletions ul { list-style: none; padding: 0; display: grid; gap: 0.3rem; }
-.publish__deletions a { color: var(--accent); text-decoration: underline; text-underline-offset: 0.2em; }
+.publish__deletions ul { list-style: none; padding: 0; display: grid; gap: 0.25rem; }
+.publish__deletions li { color: var(--muted); }
+.publish__deletions li::before { content: "− "; color: var(--accent); font-weight: 700; }
 
 .trip-row.is-deleted { opacity: 0.6; }
 .trip-row.is-deleted .trip-row__title span:first-child { text-decoration: line-through; }

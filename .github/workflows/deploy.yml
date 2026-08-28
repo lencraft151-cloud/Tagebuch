@@ -17,7 +17,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # contents: write, damit der Aufräum-Schritt vorgemerkte Löschungen
+  # tatsächlich ausführen und committen kann.
+  contents: write
   pages: write
   id-token: write
 
@@ -41,6 +43,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      # Der Verwaltungsbereich im Browser kann Dateien nur hinzufügen. Was dort
+      # gelöscht wird, kommt als Markierung an und wird hier wirklich entfernt -
+      # zusammen mit Bildern, die keine Reise mehr verwendet.
+      - name: Aufräumen
+        id: cleanup
+        run: npm run cleanup
+
+      - name: Aufräumen committen
+        if: steps.cleanup.outputs.removed != '' && steps.cleanup.outputs.removed != '0'
+        # Scheitert der Push (geschützter Branch, fehlende Rechte), soll das die
+        # Veröffentlichung nicht aufhalten: Der Build läuft ohnehin schon auf dem
+        # aufgeräumten Stand, nur das Repository hinkt dann hinterher.
+        continue-on-error: true
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A content
+          git commit \
+            -m "Aufgeräumt: ${{ steps.cleanup.outputs.removed }} Datei(en) entfernt" \
+            -m "Vorgemerkte Löschungen ausgeführt und nicht mehr verwendete Bilder entfernt. Automatisch erzeugt vom Veröffentlichungs-Workflow."
+          git push
 
       - name: Inhalte prüfen
         run: npm run check

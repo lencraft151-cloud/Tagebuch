@@ -12,6 +12,7 @@
 
 import { createZip, blobToBytes, textToBytes, download } from './zip.mjs';
 import { localTrips, localMedia } from './localstore.mjs';
+import { makeTombstone } from '../lib/trips.mjs';
 
 function stamp() {
   const now = new Date();
@@ -52,8 +53,11 @@ function readme({ repo, changed, deleted }) {
 
   if (deleted.length) {
     lines.push(
-      'Noch zu löschen (das geht nur direkt bei GitHub):',
-      ...deleted.map((e) => `  - ${e.trip.title}\n    ${repo.deleteUrl(`${repo.contentDir}/${e.slug}.json`)}`),
+      'Wird automatisch gelöscht:',
+      ...deleted.map((e) => `  - ${e.trip.title}  (content/trips/${e.slug}.json)`),
+      '',
+      'Diese Dateien sind im Paket als Löschmarkierung enthalten. GitHub Actions',
+      'entfernt sie beim nächsten Build und committet das Aufräumen selbst.',
       ''
     );
   }
@@ -77,6 +81,16 @@ export async function exportChanges(repo) {
     files.push({
       name: `content/trips/${entry.slug}.json`,
       data: textToBytes(`${JSON.stringify(entry.trip, null, 2)}\n`)
+    });
+  }
+
+  // Löschungen als Markierung mitschicken. Hochladen kann keine Datei
+  // entfernen - die überschriebene Datei sagt dem Aufräum-Job aber genau,
+  // was weg soll.
+  for (const entry of deleted) {
+    files.push({
+      name: `content/trips/${entry.slug}.json`,
+      data: textToBytes(`${JSON.stringify(makeTombstone(entry.slug), null, 2)}\n`)
     });
   }
 

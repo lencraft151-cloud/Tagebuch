@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   normalizeTrip,
+  isTombstone,
   sortEntriesChronologically,
   sortTripsByDate,
   effectiveState,
@@ -132,6 +133,8 @@ function loadTrips(config) {
       console.error(`   ! ${file} ist kein gültiges JSON und wird übersprungen: ${error.message}`);
       continue;
     }
+    if (isTombstone(raw)) continue;  // wartet nur noch auf den Aufräum-Job
+
     const trip = normalizeTrip({ ...raw, slug: raw.slug || path.basename(file, '.json') });
     trip.entries = sortEntriesChronologically(trip.entries);
     trip.sourceFile = file;

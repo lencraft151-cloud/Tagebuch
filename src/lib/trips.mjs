@@ -80,6 +80,27 @@ function normalizeEntry(entry, index) {
   };
 }
 
+/**
+ * Eine zum Löschen markierte Datei ("Grabstein").
+ *
+ * Der Verwaltungsbereich kann Dateien nicht selbst entfernen - er kann nur
+ * neue hochladen. Statt einer Löschung schreibt er deshalb diese Markierung.
+ * Der Build übergeht sie, und der Aufräum-Job in GitHub Actions löscht die
+ * Datei anschließend wirklich.
+ */
+export function isTombstone(raw) {
+  return Boolean(raw && typeof raw === 'object' && raw.deleted === true);
+}
+
+export function makeTombstone(slug) {
+  return {
+    deleted: true,
+    slug: slugify(slug),
+    deletedAt: new Date().toISOString(),
+    hinweis: 'Zum Löschen vorgemerkt. Der Aufräum-Job in GitHub Actions entfernt diese Datei beim nächsten Build.'
+  };
+}
+
 export function normalizeTrip(raw) {
   const data = raw && typeof raw === 'object' ? raw : {};
   const title = String(data.title || '').trim() || 'Ohne Titel';

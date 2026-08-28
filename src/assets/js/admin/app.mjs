@@ -389,8 +389,8 @@ async function handleListAction(action, item) {
   if (action === 'delete') {
     const ok = await confirmDialog({
       title: 'Urlaub löschen?',
-      text: `„${trip.title}" wird zum Löschen vorgemerkt. Weil dieser Bereich nichts schreiben darf, führst du das Löschen beim Veröffentlichen mit einem Klick bei GitHub aus.`,
-      confirmLabel: 'Vormerken'
+      text: `„${trip.title}" wird beim nächsten Veröffentlichen entfernt – samt der Bilder, die keine andere Reise verwendet. Das erledigt GitHub Actions von selbst.`,
+      confirmLabel: 'Löschen'
     });
     if (!ok) return;
 
@@ -1062,10 +1062,18 @@ async function saveCurrent() {
   const previousSlug = state.currentFile.replace(/\.json$/, '');
   trip.slug = uniqueSlug(trip.slug || trip.title, taken);
 
-  // Beim Umbenennen darf der alte lokale Eintrag nicht liegen bleiben.
-  if (previousSlug && previousSlug !== trip.slug) {
+  // Beim Umbenennen entsteht unter dem alten Namen eine Karteileiche im
+  // Repository. Sie wird als Löschung vorgemerkt und beim Veröffentlichen
+  // automatisch entfernt.
+  const renamed = Boolean(previousSlug) && previousSlug !== trip.slug;
+  if (renamed) {
     await localTrips.remove(previousSlug);
     state.trips = state.trips.filter((t) => !(t.trip.id !== trip.id && t.trip.slug === previousSlug));
+
+    const existedInRepo = (repo.manifest?.trips || []).some((t) => t.slug === previousSlug);
+    if (existedInRepo) {
+      await localTrips.markDeleted(previousSlug, { ...trip, slug: previousSlug });
+    }
   }
 
   const record = await storeTrip(trip);
@@ -1078,8 +1086,8 @@ async function saveCurrent() {
   renderEditorBar();
 
   toast(
-    previousSlug && previousSlug !== trip.slug
-      ? `Gespeichert. Die alte Datei ${previousSlug}.json musst du bei GitHub löschen.`
+    renamed
+      ? `Gespeichert. Die alte Adresse „${previousSlug}" wird beim Veröffentlichen entfernt.`
       : 'Lokal gespeichert. Zum Veröffentlichen das Paket hochladen.',
     'success'
   );
@@ -1120,7 +1128,7 @@ async function openPublishDialog() {
         <span>${changed.map((e) => escapeHtml(e.trip.title)).join(', ')}</span></li>` : ''}
       ${pendingMedia.length ? `<li><strong>${pluralize(pendingMedia.length, 'Bild', 'Bilder')}</strong> neu
         <span>${formatBytes(bytes)}</span></li>` : ''}
-      ${deleted.length ? `<li><strong>${pluralize(deleted.length, 'Reise', 'Reisen')}</strong> zu löschen
+      ${deleted.length ? `<li><strong>${pluralize(deleted.length, 'Reise', 'Reisen')}</strong> wird gelöscht
         <span>${deleted.map((e) => escapeHtml(e.trip.title)).join(', ')}</span></li>` : ''}
     </ul>
   `;
@@ -1128,12 +1136,8 @@ async function openPublishDialog() {
   const deleteBox = $('[data-publish-deletions]', dialog);
   deleteBox.hidden = deleted.length === 0;
   if (deleted.length) {
-    $('[data-publish-delete-links]', deleteBox).innerHTML = deleted.map((entry) => `
-      <li>
-        <a href="${escapeHtml(repo.deleteUrl(`${repo.contentDir}/${entry.slug}.json`))}" target="_blank" rel="noopener">
-          ${escapeHtml(entry.trip.title)} löschen
-        </a>
-      </li>`).join('');
+    $('[data-publish-delete-list]', deleteBox).innerHTML = deleted
+      .map((entry) => `<li>${escapeHtml(entry.trip.title)}</li>`).join('');
   }
 
   $('[data-publish-upload]', dialog).href = repo.uploadUrl();

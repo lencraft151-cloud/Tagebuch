@@ -26,5 +26,8 @@
   "admin": {
     "pinSalt": "d654cf9d7de121b28bd84d7e",
     "pinHash": "2fa39a951d5709fc1660038e038dab5622addc6a3ef1ef3584e94d513bd1d2f4"
+  },
+  "cleanup": {
+    "unusedMedia": true
   }
 }

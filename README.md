@@ -90,8 +90,9 @@ Repository:  content/trips/*.json   ← ein JSON je Urlaub
              content/media/*.jpg    ← Bilder (Vollbild + Vorschau)
         │
         ▼
-GitHub Actions:  npm run check && npm run build   →  dist/
-        │
+GitHub Actions:  aufräumen  →  prüfen  →  bauen  →  dist/
+        │        (führt vorgemerkte Löschungen aus und
+        │         entfernt nicht mehr verwendete Bilder)
         ▼
 GitHub Pages:  fertige HTML-Seiten, ~1 Minute nach dem Commit live
 ```
@@ -153,6 +154,41 @@ npm run set-pin -- 240719
 
 Danach die geänderte `site.config.json` committen.
 
+### Was automatisch aufgeräumt wird
+
+Der Verwaltungsbereich im Browser kann Dateien nur hinzufügen, nicht entfernen.
+Alles, was gelöscht gehört, übernimmt deshalb ein Aufräum-Schritt in GitHub
+Actions – er läuft bei jedem Build vor dem Bauen:
+
+| Fall | Was passiert |
+| --- | --- |
+| Urlaub gelöscht | Die Datei wird als `{"deleted": true}` markiert hochgeladen und danach wirklich gelöscht |
+| Adresse geändert | Die Datei unter der alten Adresse wird automatisch mitentfernt |
+| Bild aus einem Tag entfernt | Wird es von keiner Reise mehr verwendet, verschwindet auch die Datei |
+
+Das Aufräumen wird als eigener Commit von `github-actions[bot]` festgehalten –
+in der Historie ist also jederzeit nachvollziehbar (und wiederherstellbar), was
+entfernt wurde.
+
+Zwei Dinge dazu:
+
+* Der Build **überspringt markierte Dateien ohnehin**. Selbst wenn das Aufräumen
+  einmal scheitert (etwa bei einem geschützten Branch), ist die Website sofort
+  korrekt – nur im Repository liegt die Datei dann noch.
+* Bilder, die in `content/media` liegen, aber von keiner Reise verwendet werden,
+  gelten als verwaist und werden entfernt. Legst du Bilder manuell dort ab, um
+  sie später zu verwenden, schalte das ab:
+
+  ```jsonc
+  "cleanup": { "unusedMedia": false }
+  ```
+
+Von Hand prüfen, was passieren würde:
+
+```bash
+npm run cleanup -- --dry-run
+```
+
 ### Änderungen veröffentlichen
 
 1. Oben rechts auf **Veröffentlichen**.
@@ -163,11 +199,13 @@ Danach die geänderte `site.config.json` committen.
 4. Zurück im Verwaltungsbereich auf **Erledigt** – das verwirft die lokale
    Merkliste.
 
-Nach etwa einer Minute ist alles live.
+Nach etwa einer Minute ist alles live. Löschungen und verwaiste Bilder räumt
+GitHub Actions dabei von selbst weg.
 
-> **Löschen** lässt sich per Hochladen nicht ausdrücken. Gelöschte Reisen werden
-> deshalb vorgemerkt; der Veröffentlichen-Dialog zeigt für jede einen direkten
-> Verweis auf die Löschen-Seite bei GitHub.
+**Löschen läuft mit.** Hochladen kann keine Datei entfernen – deshalb schreibt
+der Verwaltungsbereich stattdessen eine Löschmarkierung. GitHub Actions führt
+das Löschen beim nächsten Build wirklich aus und committet das Aufräumen selbst.
+Für dich ändert sich nichts: löschen, veröffentlichen, fertig.
 
 > **Achtung:** Die offenen Änderungen liegen nur in **diesem** Browser. Leerst du
 > die Browserdaten, bevor du veröffentlicht hast, sind sie weg. Für längere
@@ -305,6 +343,8 @@ npm run dev       # baut, startet http://127.0.0.1:4173/Tagebuch/ und beobachtet
 npm run build     # baut einmalig nach dist/
 npm run preview   # baut und startet ohne Datei-Beobachtung
 npm run check     # prüft alle Inhalte auf Fehler
+npm run cleanup   # führt vorgemerkte Löschungen aus (--dry-run zeigt nur an)
+npm run set-pin   # setzt die Admin-PIN, z. B.: npm run set-pin -- 240719
 npm run clean     # löscht dist/
 ```
 
@@ -360,6 +400,9 @@ auch von Hand bearbeiten – `npm run check` prüft sie anschließend.
 }
 ```
 
+Eine Datei mit `{"deleted": true}` ist eine **Löschmarkierung**: Der Build
+übergeht sie, der Aufräum-Schritt entfernt sie beim nächsten Lauf.
+
 Im Text sind einfache Auszeichnungen möglich:
 `**fett**`, `*kursiv*`, `` `Code` ``, `[Text](https://…)`, `> Zitat`,
 `- Aufzählung`, `1. nummeriert`, `## Zwischenüberschrift`.
@@ -388,6 +431,8 @@ Der Build legt dann automatisch eine `CNAME`-Datei an; `basePath` wird zu `/`.
 | Reisen werden nicht geladen | Das Repository muss öffentlich sein (sonst gibt GitHub die Rohdateien nicht heraus) und der erste Build muss durch sein |
 | Offene Änderungen sind verschwunden | Sie lagen in der IndexedDB dieses Browsers. Nach dem Leeren der Browserdaten oder in einem privaten Fenster sind sie weg |
 | Hochgeladenes ZIP legt Dateien falsch ab | Das ZIP muss **entpackt** und der Ordner `content` hineingezogen werden – nicht das ZIP selbst |
+| Gelöschte Reise liegt noch im Repository | Der Aufräum-Schritt konnte nicht pushen (geschützter Branch?). Die Website ist trotzdem korrekt; im Actions-Protokoll steht der Grund |
+| Ein Bild wurde ungewollt gelöscht | Es war von keiner Reise verwendet. Über die Commit-Historie wiederherstellen und `cleanup.unusedMedia` auf `false` setzen |
 | Änderung nicht sichtbar | Build läuft noch (Statusleiste im Admin) oder Browser-Cache. Einmal hart neu laden |
 | Hochgeladenes Bild erscheint nicht sofort | Roh-Dateien von GitHub sind kurz verzögert. Im Editor greift eine lokale Vorschau |
 | Ein Urlaub fehlt in der Übersicht | Status prüfen (Entwurf?) und Veröffentlichungszeitraum kontrollieren |
@@ -412,6 +457,8 @@ npm run check
 ├── src/
 │   ├── build.mjs                  Statischer Generator
 │   ├── check-content.mjs          Inhaltsprüfung
+│   ├── cleanup.mjs                Löschungen ausführen, verwaiste Bilder entfernen
+│   ├── set-pin.mjs                Admin-PIN setzen
 │   ├── dev-server.mjs             Lokale Vorschau
 │   ├── lib/                       Von Build und Browser gemeinsam genutzt
 │   │   ├── trips.mjs              Datenmodell, Sichtbarkeitslogik

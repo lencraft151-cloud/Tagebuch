@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { normalizeTrip, slugify } from './lib/trips.mjs';
+import { normalizeTrip, slugify, isTombstone } from './lib/trips.mjs';
 import { parseDate } from './lib/format.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +38,7 @@ const files = fs.readdirSync(TRIPS_DIR).filter((name) => name.endsWith('.json'))
 const slugs = new Map();
 let entryCount = 0;
 let imageCount = 0;
+let tombstones = 0;
 
 for (const file of files) {
   const full = path.join(TRIPS_DIR, file);
@@ -46,6 +47,11 @@ for (const file of files) {
     raw = JSON.parse(fs.readFileSync(full, 'utf8'));
   } catch (error) {
     errors.push(`${file}: ungültiges JSON – ${error.message}`);
+    continue;
+  }
+
+  if (isTombstone(raw)) {
+    tombstones += 1;
     continue;
   }
 
@@ -89,7 +95,7 @@ for (const file of files) {
   }
 }
 
-console.log(`\n▸ Inhalte geprüft: ${files.length} Reise(n), ${entryCount} Einträge, ${imageCount} Bilder`);
+console.log(`\n▸ Inhalte geprüft: ${files.length - tombstones} Reise(n), ${entryCount} Einträge, ${imageCount} Bilder${tombstones ? ` · ${tombstones} zum Löschen vorgemerkt` : ''}`);
 
 for (const warning of warnings) console.log(`   ! ${warning}`);
 for (const error of errors) console.error(`   ✗ ${error}`);

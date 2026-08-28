@@ -204,9 +204,13 @@ window.__ADMIN_CONFIG__ = {{CONFIG}};
     </ol>
 
     <div class="publish__deletions" data-publish-deletions hidden>
-      <strong>Noch zu löschen</strong>
-      <p>Löschen geht nur direkt bei GitHub – ein Klick je Reise:</p>
-      <ul data-publish-delete-links></ul>
+      <strong>Wird automatisch gelöscht</strong>
+      <p>
+        Im Paket stecken Löschmarkierungen. GitHub Actions entfernt diese Reisen
+        beim nächsten Build – zusammen mit Bildern, die keine andere Reise mehr
+        verwendet – und committet das Aufräumen selbst.
+      </p>
+      <ul data-publish-delete-list></ul>
     </div>
 
     <div class="modal__actions">
