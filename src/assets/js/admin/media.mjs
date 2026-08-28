@@ -1,13 +1,16 @@
 /**
- * Bildverarbeitung im Browser: verkleinern, komprimieren, Vorschau-Platzhalter
- * erzeugen und zu GitHub hochladen.
+ * Bildverarbeitung im Browser: verkleinern, komprimieren und einen
+ * Vorschau-Platzhalter erzeugen.
  *
  * Warum im Browser? Auf GitHub Pages gibt es keinen Server, der Bilder
  * skalieren könnte. Ohne Verkleinerung landen 8-MB-Handyfotos im Repository
  * und die Website wird auf dem Smartphone unbenutzbar.
+ *
+ * Die fertigen Bilder werden zunächst nur lokal abgelegt und erst beim
+ * Veröffentlichen gemeinsam als Paket ausgegeben.
  */
 
-import { encodeBytes } from './github.mjs';
+import { localMedia } from './localstore.mjs';
 
 export const FULL_MAX = 2000;
 export const THUMB_MAX = 800;
@@ -108,40 +111,32 @@ export async function prepareImage(file) {
   };
 }
 
-async function blobToBase64(blob) {
-  return encodeBytes(await blob.arrayBuffer());
-}
-
 /**
- * Lädt Vollbild und Vorschau ins Repository und liefert den Bild-Datensatz
- * für die Reise-JSON.
+ * Erzeugte Bilder lokal ablegen und den Datensatz für die Reise-JSON liefern.
+ * Hochgeladen wird nichts - das passiert später gebündelt beim Veröffentlichen.
  */
-export async function uploadImage({ github, mediaDir, prepared, prefix = '', onProgress }) {
+export async function storeImage({ prepared, prefix = '' }) {
   const stamp = Date.now().toString(36);
   const random = Math.random().toString(36).slice(2, 6);
   const name = `${prefix ? `${prefix}-` : ''}${prepared.baseName}-${stamp}${random}`;
 
-  const fullPath = `${mediaDir}/${name}.jpg`;
-  const thumbPath = `${mediaDir}/${name}-thumb.jpg`;
+  const src = `media/${name}.jpg`;
+  const thumb = `media/${name}-thumb.jpg`;
 
-  onProgress?.({ step: 'full', name });
-  await github.putFile({
-    path: fullPath,
-    contentBase64: await blobToBase64(prepared.full),
-    message: `Bild hinzugefügt: ${name}.jpg`
-  });
-
-  onProgress?.({ step: 'thumb', name });
-  await github.putFile({
-    path: thumbPath,
-    contentBase64: await blobToBase64(prepared.thumb),
-    message: `Vorschaubild hinzugefügt: ${name}-thumb.jpg`
+  await localMedia.put({
+    src,
+    thumb,
+    full: prepared.full,
+    thumbBlob: prepared.thumb,
+    width: prepared.width,
+    height: prepared.height,
+    createdAt: new Date().toISOString()
   });
 
   return {
     id: `img-${stamp}${random}`,
-    src: `media/${name}.jpg`,
-    thumb: `media/${name}-thumb.jpg`,
+    src,
+    thumb,
     alt: '',
     caption: '',
     width: prepared.width,
@@ -151,51 +146,52 @@ export async function uploadImage({ github, mediaDir, prepared, prefix = '', onP
 }
 
 /**
- * Bildpfade aus der JSON ("media/foo.jpg") in eine anzeigbare URL übersetzen.
- * Öffentliche Repositories nutzen die schnelle Roh-URL, private Repositories
- * laden über die API und erzeugen eine Blob-URL.
+ * Bildpfade zu anzeigbaren Adressen auflösen.
+ *
+ * Reihenfolge: noch nicht veröffentlichte Bilder kommen aus der lokalen
+ * Ablage, alles andere vom eigenen Server. Schlägt beides fehl, wird die
+ * Rohdatei bei GitHub versucht - dort liegen bereits committete Bilder, die
+ * der Build noch nicht verarbeitet hat.
  */
-export function createMediaResolver(github, mediaDir) {
+export function createMediaResolver(repo) {
   const cache = new Map();
-  const local = new Map();
-
-  const repoPath = (src) => `${mediaDir}/${String(src).replace(/^media\//, '')}`;
 
   return {
-    /** Sofortige Vorschau für gerade ausgewählte Dateien (vor dem Upload). */
-    registerLocal(src, blob) {
-      const url = URL.createObjectURL(blob);
-      local.set(src, url);
-      cache.set(src, url);
-      return url;
-    },
     async resolve(src) {
       if (!src) return '';
       if (/^(https?:)?\/\//i.test(src) || src.startsWith('data:')) return src;
       if (cache.has(src)) return cache.get(src);
 
-      if (!github.isPrivate) {
-        const url = github.rawUrl(repoPath(src));
+      const pending = await findLocal(src);
+      if (pending) {
+        const url = URL.createObjectURL(pending);
         cache.set(src, url);
         return url;
       }
 
-      try {
-        const buffer = await github.getBlob(repoPath(src));
-        const url = URL.createObjectURL(new Blob([buffer]));
-        cache.set(src, url);
-        return url;
-      } catch {
-        return '';
-      }
+      const url = repo.imageUrl(src);
+      cache.set(src, url);
+      return url;
+    },
+    fallback(src) {
+      return repo.imageRawUrl(src);
     },
     forget(src) {
-      const url = local.get(src);
-      if (url) URL.revokeObjectURL(url);
-      local.delete(src);
+      const url = cache.get(src);
+      if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
       cache.delete(src);
     }
   };
+}
+
+async function findLocal(src) {
+  const direct = await localMedia.get(src);
+  if (direct?.full) return direct.full;
+
+  // Vorschaubilder sind unter dem Vollbild abgelegt
+  const all = await localMedia.all();
+  const match = all.find((item) => item.thumb === src);
+  return match?.thumbBlob || null;
 }
 
 export function formatBytes(bytes) {

@@ -212,6 +212,27 @@ function build() {
   const index = deployable.map(toIndexEntry);
   writeFile('data/trips.json', JSON.stringify({ generatedAt: now.toISOString(), base, trips: index }, null, 0));
 
+  // Verzeichnis aller Quelldateien für den Verwaltungsbereich. Enthält auch
+  // Entwürfe - allerdings nur Name und Status, nie deren Inhalt. Der Admin
+  // lädt die eigentlichen Daten direkt aus dem Repository und braucht dafür
+  // keine Anmeldung.
+  writeFile('data/manifest.json', JSON.stringify({
+    generatedAt: now.toISOString(),
+    repo: {
+      owner: config.repo?.owner || '',
+      name: config.repo?.name || '',
+      branch: process.env.SITE_BRANCH || config.repo?.branch || 'main',
+      contentDir: config.repo?.contentDir || 'content/trips',
+      mediaDir: config.repo?.mediaDir || 'content/media'
+    },
+    trips: allTrips.map((trip) => ({
+      file: trip.sourceFile,
+      slug: trip.slug,
+      status: trip.status,
+      updatedAt: trip.updatedAt
+    }))
+  }, null, 0));
+
   for (const trip of deployable) {
     const { sourceFile, ...clean } = trip;
     writeFile(`data/reisen/${trip.slug}.json`, JSON.stringify(clean, null, 0));
@@ -319,8 +340,9 @@ function build() {
       title: config.title,
       base,
       siteUrl,
-      repo: config.repo,
-      theme: config.theme
+      repo: { ...config.repo, branch: process.env.SITE_BRANCH || config.repo?.branch || 'main' },
+      theme: config.theme,
+      admin: config.admin || {}
     }).replace(/</g, '\\u003c'));
   writeFile('admin/index.html', adminHtml);
   pageCount += 1;

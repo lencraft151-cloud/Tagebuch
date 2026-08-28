@@ -12,7 +12,8 @@
     "dev": "node src/dev-server.mjs",
     "preview": "node src/build.mjs && node src/dev-server.mjs --no-watch",
     "check": "node src/check-content.mjs",
-    "clean": "node -e \"import('node:fs').then(fs=>fs.rmSync('dist',{recursive:true,force:true}))\""
+    "clean": "node -e \"import('node:fs').then(fs=>fs.rmSync('dist',{recursive:true,force:true}))\"",
+    "set-pin": "node src/set-pin.mjs"
   },
   "license": "MIT"
 }

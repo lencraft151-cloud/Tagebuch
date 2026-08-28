@@ -1,13 +1,25 @@
 /**
- * Verwaltungsbereich: Urlaube anlegen, bearbeiten, veröffentlichen und löschen.
+ * Verwaltungsbereich - ohne Anmeldung bei GitHub.
  *
- * Alle Änderungen werden als Commits über die GitHub-API im Repository
- * gespeichert. GitHub Actions baut die Website danach automatisch neu.
+ * Ablauf:
+ *   1. Lesen   - die Inhalte kommen unverschlüsselt und ohne Token aus dem
+ *                öffentlichen Repository (raw.githubusercontent.com) sowie
+ *                aus data/manifest.json der eigenen Website.
+ *   2. Ändern  - alles Bearbeitete liegt zunächst in der IndexedDB dieses
+ *                Browsers. Nichts geht dabei ins Netz.
+ *   3. Veröffentlichen - die offenen Änderungen werden als ZIP ausgegeben und
+ *                auf der Hochladen-Seite von GitHub abgelegt. GitHub Actions
+ *                baut die Website danach automatisch neu.
+ *
+ * Der Verzicht auf einen Token bedeutet: Dieser Bereich kann nichts schreiben.
+ * Der letzte Schritt passiert bewusst bei GitHub, wo du ohnehin angemeldet
+ * bist. Damit liegt nirgends ein Zugangsschlüssel herum.
  */
 
-import { GitHub, encodeText } from './github.mjs';
-import { prepareImage, uploadImage, createMediaResolver, isSupportedImage, formatBytes } from './media.mjs';
-import { createVault, openVault, hasVault, clearVault, legacyToken, VaultError } from './vault.mjs';
+import { prepareImage, storeImage, createMediaResolver, isSupportedImage, formatBytes } from './media.mjs';
+import { Repo, RepoError } from './repo.mjs';
+import { localTrips, localMedia, clearAll, isAvailable } from './localstore.mjs';
+import { pendingChanges, exportChanges, exportTrip } from './publish.mjs';
 import {
   normalizeTrip,
   emptyTrip,
@@ -18,30 +30,29 @@ import {
   sortEntriesChronologically,
   createId,
   countImages,
-  firstImage,
-  sortTripsByDate
+  firstImage
 } from '../lib/trips.mjs';
 import { formatDateRange, pluralize } from '../lib/format.mjs';
 import { $, $$, el, escapeHtml, icons, toast, setLoading, setLoadingText, confirmDialog, debounce, initTheme, humanDate, humanDateTime } from './ui.mjs';
 
 const config = window.__ADMIN_CONFIG__ || {};
 const repoConfig = config.repo || {};
-const CONTENT_DIR = repoConfig.contentDir || 'content/trips';
-const MEDIA_DIR = repoConfig.mediaDir || 'content/media';
 
-const github = new GitHub({
+const repo = new Repo({
   owner: repoConfig.owner,
   name: repoConfig.name,
-  branch: repoConfig.branch || 'main'
+  branch: repoConfig.branch || 'main',
+  contentDir: repoConfig.contentDir || 'content/trips',
+  mediaDir: repoConfig.mediaDir || 'content/media',
+  base: config.base || '/'
 });
 
-let media = createMediaResolver(github, MEDIA_DIR);
+const media = createMediaResolver(repo);
 
 const state = {
-  trips: [],          // { trip, path, sha }
-  current: null,      // aktuell bearbeitete Reise (Kopie)
-  currentPath: '',
-  currentSha: '',
+  trips: [],          // { trip, file, source: 'repo' | 'lokal', dirty, deleted }
+  current: null,
+  currentFile: '',
   dirty: false,
   search: '',
   statusFilter: '',
@@ -80,115 +91,78 @@ function nowStamp() {
   return new Date().toISOString();
 }
 
-/** Bildquellen im DOM asynchron auflösen (öffentlich: Roh-URL, privat: API). */
+/** Bildquellen im DOM auflösen (lokal Zwischengespeichertes bevorzugt). */
 async function hydrateImages(scope = document) {
   const nodes = $$('img[data-src]', scope);
   await Promise.all(nodes.map(async (img) => {
     const src = img.dataset.src;
     img.removeAttribute('data-src');
     const url = await media.resolve(src);
-    if (url) img.src = url;
-    else img.closest('.image-item__frame, .trip-row__thumb, .cover')?.classList.add('is-missing');
+    if (!url) return;
+    img.src = url;
+    // Noch nicht gebaute, aber bereits committete Bilder liegen nur bei GitHub.
+    img.addEventListener('error', () => {
+      const fallback = media.fallback(src);
+      if (fallback && img.src !== fallback) img.src = fallback;
+    }, { once: true });
   }));
 }
 
 /* ============================================================== Anmeldung == */
 
-function showLogin(message = '', which = null) {
+/**
+ * PIN-Prüfung.
+ *
+ * Hinter der PIN liegt kein Geheimnis: Der Bereich kann von sich aus nichts
+ * veröffentlichen, das geht nur über deinen GitHub-Zugang. Sie ist deshalb
+ * ein Riegel gegen versehentliches Verstellen, keine echte Zugangssperre.
+ * Gespeichert ist nur ein gesalzener SHA-256-Hash, damit die Ziffern nicht
+ * offen im Quelltext stehen.
+ */
+async function checkPin(pin) {
+  const { pinSalt = '', pinHash = '' } = config.admin || {};
+  if (!pinHash) return true;
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Die Seite muss über HTTPS geöffnet werden.');
+  }
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${pinSalt}:${pin}`));
+  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return hex === pinHash;
+}
+
+function showLogin(message = '') {
   $('[data-view="login"]').hidden = false;
   $('[data-view="app"]').hidden = true;
-
-  const mode = which || (hasVault() ? 'pin' : 'setup');
-  const pinForm = $('[data-form="pin"]');
-  const setupForm = $('[data-form="setup"]');
-  pinForm.hidden = mode !== 'pin';
-  setupForm.hidden = mode !== 'setup';
-
-  const error = mode === 'pin' ? $('[data-login-error]') : $('[data-setup-error]');
-  for (const node of [$('[data-login-error]'), $('[data-setup-error]')]) {
-    node.hidden = true;
-    node.textContent = '';
+  const error = $('[data-login-error]');
+  error.hidden = !message;
+  error.textContent = message;
+  const field = $('[data-pin-input]');
+  if (field) {
+    field.value = '';
+    field.focus();
   }
-  if (message) {
-    error.hidden = false;
-    error.textContent = message;
-  }
-
-  const field = mode === 'pin' ? $('[data-pin-input]') : $('[data-setup-pin]');
-  field?.focus();
-  if (mode === 'pin' && field) field.value = '';
 }
 
 function showApp() {
   $('[data-view="login"]').hidden = true;
   $('[data-view="app"]').hidden = false;
-  $('[data-repo-label]').textContent = `${github.repoPath} · ${github.branch}`;
-  $('[data-user-name]').textContent = github.user?.login || '';
-  const avatar = $('[data-user-avatar]');
-  if (github.user?.avatar_url) {
-    avatar.src = github.user.avatar_url;
-    avatar.hidden = false;
-  }
-}
-
-/**
- * Mit einem Token bei GitHub anmelden und die Urlaube laden.
- * Ist `persistWithPin` gesetzt, wird der Tresor angelegt, sobald der Token
- * geprüft ist - also bevor die (langsamere) Reise-Liste geladen wird.
- */
-async function signInWithToken(token, { persistWithPin = '' } = {}) {
-  await github.signIn(token);
-
-  if (persistWithPin) {
-    try {
-      await createVault(persistWithPin, token);
-      toast('Zugang eingerichtet. Ab jetzt genügt die PIN.', 'success');
-    } catch (error) {
-      toast(`${error.message} Du bleibst für diese Sitzung angemeldet.`, 'error');
-    }
-  }
-
-  media = createMediaResolver(github, MEDIA_DIR);
-  showApp();
-  await loadTrips();
-}
-
-/** Anmeldung per PIN: Token aus dem Tresor holen. */
-async function signInWithPin(pin) {
-  // Genau ein setLoading(true)/false-Paar: sonst bleibt das Overlay stehen
-  // und fängt sämtliche Klicks ab.
-  setLoading(true, 'Zugang wird entschlüsselt …');
+  $('[data-repo-label]').textContent = `${repo.path} · ${repo.branch}`;
   try {
-    const token = await openVault(pin);
-    setLoadingText('Anmeldung wird geprüft …');
-    await signInWithToken(token);
-  } catch (error) {
-    github.clearToken();
-    if (error instanceof VaultError) {
-      showLogin(error.message, 'pin');
-    } else {
-      // Die PIN stimmte, aber der Token ist abgelaufen oder zurückgezogen -
-      // direkt in die Neueinrichtung führen.
-      showLogin(`${error.message} Bitte einen neuen Token hinterlegen.`, 'setup');
-    }
-  } finally {
-    setLoading(false);
-  }
+    sessionStorage.setItem('tagebuch:entsperrt', '1');
+  } catch { /* nicht schlimm */ }
 }
 
-/** Ersteinrichtung: Token prüfen und verschlüsselt ablegen. */
-async function setUpAccess(pin, token) {
-  if (!/^\d{4,16}$/.test(pin)) {
-    showLogin('Die PIN muss aus 4 bis 16 Ziffern bestehen.', 'setup');
-    return;
-  }
-
-  setLoading(true, 'Token wird geprüft …');
+async function unlock(pin) {
+  setLoading(true, 'Wird geprüft …');
   try {
-    await signInWithToken(token, { persistWithPin: pin });
+    if (!(await checkPin(pin))) {
+      showLogin('PIN falsch.');
+      return;
+    }
+    showApp();
+    await loadTrips();
   } catch (error) {
-    github.clearToken();
-    showLogin(error.message || 'Anmeldung fehlgeschlagen.', 'setup');
+    showLogin(error.message || 'Anmeldung fehlgeschlagen.');
   } finally {
     setLoading(false);
   }
@@ -196,32 +170,101 @@ async function setUpAccess(pin, token) {
 
 /* =============================================================== Laden ===== */
 
+/**
+ * Reisen laden: Grundlage ist das Repository, darüber liegen die noch nicht
+ * veröffentlichten Änderungen aus diesem Browser.
+ */
 async function loadTrips() {
-  setLoading(true, 'Urlaube werden geladen …');
+  setLoading(true, 'Reisen werden geladen …');
   try {
-    const files = (await github.listDir(CONTENT_DIR)).filter((item) => item.type === 'file' && item.name.endsWith('.json'));
+    let manifest = null;
+    try {
+      manifest = await repo.loadManifest();
+      if (manifest?.repo?.branch) repo.branch = manifest.repo.branch;
+    } catch (error) {
+      toast(error.message, 'error');
+    }
 
-    const loaded = await Promise.all(files.map(async (file) => {
+    const remote = [];
+    for (const item of manifest?.trips || []) {
       try {
-        const { text, sha } = await github.getFile(file.path);
-        const trip = normalizeTrip(JSON.parse(text));
-        if (!trip.slug) trip.slug = slugify(file.name.replace(/\.json$/, ''));
-        return { trip, path: file.path, sha };
+        const raw = await repo.loadTrip(item.file);
+        remote.push({ trip: normalizeTrip(raw), file: item.file, source: 'repo' });
       } catch (error) {
-        console.error(`Fehler in ${file.name}:`, error);
-        toast(`${file.name} konnte nicht gelesen werden.`, 'error');
-        return null;
+        console.error(`Fehler bei ${item.file}:`, error);
+        toast(`„${item.file}" konnte nicht geladen werden.`, 'error');
       }
-    }));
+    }
 
-    state.trips = loaded.filter(Boolean);
-    state.trips.sort((a, b) => (b.trip.startDate || '').localeCompare(a.trip.startDate || ''));
+    // Lokale Änderungen darüberlegen
+    const local = isAvailable() ? await localTrips.all() : [];
+    const bySlug = new Map(remote.map((entry) => [entry.trip.slug, entry]));
+
+    for (const entry of local) {
+      if (entry.deleted) {
+        const existing = bySlug.get(entry.slug);
+        if (existing) existing.deleted = true;
+        else bySlug.set(entry.slug, { trip: normalizeTrip(entry.trip), file: `${entry.slug}.json`, source: 'lokal', deleted: true });
+        continue;
+      }
+      bySlug.set(entry.slug, {
+        trip: normalizeTrip(entry.trip),
+        file: `${entry.slug}.json`,
+        source: bySlug.has(entry.slug) ? 'repo' : 'lokal',
+        dirty: true
+      });
+    }
+
+    state.trips = [...bySlug.values()].sort((a, b) => (b.trip.startDate || '').localeCompare(a.trip.startDate || ''));
     renderList();
+    await refreshPendingBar();
   } catch (error) {
-    toast(error.message || 'Urlaube konnten nicht geladen werden.', 'error');
+    toast(error.message || 'Reisen konnten nicht geladen werden.', 'error');
   } finally {
     setLoading(false);
   }
+}
+
+/* ======================================================= Offene Änderungen = */
+
+async function refreshPendingBar() {
+  const bar = $('[data-pending-bar]');
+  if (!bar) return;
+  if (!isAvailable()) {
+    bar.hidden = true;
+    return;
+  }
+
+  const { changed, deleted, media: pendingMedia, bytes, total } = await pendingChanges();
+  bar.hidden = total === 0;
+  if (!total) return;
+
+  const parts = [];
+  if (changed.length) parts.push(pluralize(changed.length, 'geänderte Reise', 'geänderte Reisen'));
+  if (deleted.length) parts.push(`${deleted.length} zu löschen`);
+  if (pendingMedia.length) parts.push(`${pluralize(pendingMedia.length, 'neues Bild', 'neue Bilder')} (${formatBytes(bytes)})`);
+
+  $('[data-pending-text]', bar).textContent = `Noch nicht veröffentlicht: ${parts.join(' · ')}`;
+}
+
+/** Reise lokal speichern. Netzwerk ist dabei nicht im Spiel. */
+async function storeTrip(trip) {
+  const clean = normalizeTrip({ ...trip, updatedAt: nowStamp() });
+  await localTrips.put(clean.slug, clean);
+
+  const index = state.trips.findIndex((entry) => entry.trip.id === clean.id);
+  const record = {
+    trip: clean,
+    file: `${clean.slug}.json`,
+    source: index >= 0 ? state.trips[index].source : 'lokal',
+    dirty: true
+  };
+  if (index >= 0) state.trips[index] = record;
+  else state.trips.unshift(record);
+
+  state.trips.sort((a, b) => (b.trip.startDate || '').localeCompare(a.trip.startDate || ''));
+  await refreshPendingBar();
+  return record;
 }
 
 /* ============================================================= Übersicht === */
@@ -234,10 +277,9 @@ function renderList() {
   const now = new Date();
   list.innerHTML = '';
 
-  // Zusammenfassung nach tatsächlichem Zustand, nicht nach rohem Status –
-  // so passt sie zu den Abzeichen in der Liste.
   const counts = {};
   for (const item of state.trips) {
+    if (item.deleted) continue;
     const key = effectiveState(item.trip, now);
     counts[key] = (counts[key] || 0) + 1;
   }
@@ -249,8 +291,9 @@ function renderList() {
     counts.expired ? `${counts.expired} ausgeblendet` : ''
   ].filter(Boolean);
 
-  $('[data-list-summary]').textContent = state.trips.length
-    ? `${pluralize(state.trips.length, 'Urlaub', 'Urlaube')} · ${summary.join(' · ')}`
+  const visible = state.trips.filter((t) => !t.deleted).length;
+  $('[data-list-summary]').textContent = visible
+    ? `${pluralize(visible, 'Urlaub', 'Urlaube')} · ${summary.join(' · ')}`
     : 'Noch nichts angelegt.';
 
   for (const item of state.trips) {
@@ -259,22 +302,27 @@ function renderList() {
     const stateKey = effectiveState(trip, now);
 
     const row = el(`
-      <article class="trip-row" data-slug="${escapeHtml(trip.slug)}">
+      <article class="trip-row${item.deleted ? ' is-deleted' : ''}" data-slug="${escapeHtml(trip.slug)}">
         <div class="trip-row__thumb">${cover ? `<img data-src="${escapeHtml(cover.thumb || cover.src)}" alt="">` : ''}</div>
         <div class="trip-row__body">
           <h2 class="trip-row__title">
             <span>${escapeHtml(trip.title)}</span>
-            <span class="state" data-state="${stateKey}">${escapeHtml(STATE_LABELS[stateKey] || stateKey)}</span>
+            ${item.deleted
+              ? '<span class="state" data-state="expired">Zum Löschen</span>'
+              : `<span class="state" data-state="${stateKey}">${escapeHtml(STATE_LABELS[stateKey] || stateKey)}</span>`}
+            ${item.dirty && !item.deleted ? '<span class="state" data-state="scheduled" title="Diese Änderung ist noch nicht bei GitHub">Geändert</span>' : ''}
           </h2>
           <p class="trip-row__meta">${escapeHtml([trip.location, formatDateRange(trip.startDate, trip.endDate)].filter(Boolean).join(' · ')) || '—'}</p>
           <p class="trip-row__stats">${pluralize(trip.entries.length, 'Tag', 'Tage')} · ${pluralize(countImages(trip), 'Bild', 'Bilder')}${trip.publishFrom ? ` · ab ${escapeHtml(humanDateTime(trip.publishFrom))}` : ''}${trip.publishUntil ? ` · bis ${escapeHtml(humanDateTime(trip.publishUntil))}` : ''}</p>
         </div>
         <div class="trip-row__actions">
-          <button class="btn btn--quiet btn--small" type="button" data-action="edit">${icons.edit} Bearbeiten</button>
-          <button class="btn btn--quiet btn--small" type="button" data-action="toggle">${trip.status === 'published' ? `${icons.eyeOff} Verstecken` : `${icons.eye} Veröffentlichen`}</button>
-          <button class="btn btn--quiet btn--small" type="button" data-action="archive" title="Archivieren">${icons.archive}</button>
-          <button class="btn btn--quiet btn--small" type="button" data-action="duplicate" title="Duplizieren">${icons.copy}</button>
-          <button class="btn btn--quiet btn--small" type="button" data-action="delete" title="Löschen">${icons.trash}</button>
+          ${item.deleted
+            ? `<button class="btn btn--quiet btn--small" type="button" data-action="undelete">Löschen zurücknehmen</button>`
+            : `<button class="btn btn--quiet btn--small" type="button" data-action="edit">${icons.edit} Bearbeiten</button>
+               <button class="btn btn--quiet btn--small" type="button" data-action="toggle">${trip.status === 'published' ? `${icons.eyeOff} Verstecken` : `${icons.eye} Veröffentlichen`}</button>
+               <button class="btn btn--quiet btn--small" type="button" data-action="archive" title="Archivieren">${icons.archive}</button>
+               <button class="btn btn--quiet btn--small" type="button" data-action="duplicate" title="Duplizieren">${icons.copy}</button>
+               <button class="btn btn--quiet btn--small" type="button" data-action="delete" title="Löschen">${icons.trash}</button>`}
         </div>
       </article>
     `);
@@ -319,44 +367,43 @@ async function handleListAction(action, item) {
 
   if (action === 'edit') { openEditor(item); return; }
 
-  if (action === 'toggle') {
-    const next = trip.status === 'published' ? 'draft' : 'published';
-    await persistTrip({ ...item, trip: { ...trip, status: next, updatedAt: nowStamp() } },
-      next === 'published' ? `Urlaub veröffentlicht: ${trip.title}` : `Urlaub versteckt: ${trip.title}`);
-    return;
-  }
-
-  if (action === 'archive') {
-    const next = trip.status === 'archived' ? 'published' : 'archived';
-    await persistTrip({ ...item, trip: { ...trip, status: next, updatedAt: nowStamp() } },
-      next === 'archived' ? `Urlaub archiviert: ${trip.title}` : `Urlaub reaktiviert: ${trip.title}`);
+  if (action === 'toggle' || action === 'archive') {
+    const next = action === 'toggle'
+      ? (trip.status === 'published' ? 'draft' : 'published')
+      : (trip.status === 'archived' ? 'published' : 'archived');
+    await storeTrip({ ...trip, status: next });
+    renderList();
+    toast('Geändert. Zum Veröffentlichen das Paket hochladen.');
     return;
   }
 
   if (action === 'duplicate') { await duplicateTrip(item); return; }
 
+  if (action === 'undelete') {
+    await localTrips.remove(trip.slug);
+    await loadTrips();
+    toast('Löschen zurückgenommen.');
+    return;
+  }
+
   if (action === 'delete') {
     const ok = await confirmDialog({
       title: 'Urlaub löschen?',
-      text: `„${trip.title}“ wird mit allen Einträgen gelöscht. Bilder, die nur hier verwendet werden, werden ebenfalls entfernt.`,
-      confirmLabel: 'Endgültig löschen'
+      text: `„${trip.title}" wird zum Löschen vorgemerkt. Weil dieser Bereich nichts schreiben darf, führst du das Löschen beim Veröffentlichen mit einem Klick bei GitHub aus.`,
+      confirmLabel: 'Vormerken'
     });
     if (!ok) return;
 
-    setLoading(true, 'Wird gelöscht …');
-    try {
-      const previousPaths = mediaPathsOf(trip);
-      await github.deleteFile({ path: item.path, sha: item.sha, message: `Urlaub gelöscht: ${trip.title}` });
-      state.trips = state.trips.filter((t) => t !== item);
-      const removed = await cleanUpMedia(previousPaths, null);
-      renderList();
-      toast(`Urlaub gelöscht${removed ? ` · ${removed} Bilddatei(en) entfernt` : ''}.`, 'success');
-      watchDeploy();
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      setLoading(false);
+    if (item.source === 'lokal' && !item.dirtyFromRepo) {
+      // Nur lokal vorhanden - einfach verwerfen
+      await localTrips.remove(trip.slug);
+      await loadTrips();
+      toast('Entwurf verworfen.');
+      return;
     }
+    await localTrips.markDeleted(trip.slug, trip);
+    await loadTrips();
+    toast('Zum Löschen vorgemerkt.');
   }
 }
 
@@ -375,140 +422,16 @@ async function duplicateTrip(item) {
   });
   copy.entries = copy.entries.map((entry) => ({ ...entry, id: createId('entry') }));
 
-  setLoading(true, 'Kopie wird erstellt …');
-  try {
-    const path = `${CONTENT_DIR}/${copy.slug}.json`;
-    const { sha } = await github.putFile({
-      path,
-      contentBase64: encodeText(`${JSON.stringify(copy, null, 2)}\n`),
-      message: `Urlaub dupliziert: ${copy.title}`
-    });
-    state.trips.unshift({ trip: copy, path, sha });
-    renderList();
-    toast('Kopie als Entwurf angelegt.', 'success');
-    watchDeploy();
-  } catch (error) {
-    toast(error.message, 'error');
-  } finally {
-    setLoading(false);
-  }
-}
-
-/** Reise speichern und Liste aktualisieren. */
-async function persistTrip(item, message) {
-  setLoading(true, 'Wird gespeichert …');
-  try {
-    const trip = normalizeTrip(item.trip);
-    const targetPath = `${CONTENT_DIR}/${trip.slug}.json`;
-    const renamed = item.path && item.path !== targetPath;
-
-    const { sha } = await github.putFile({
-      path: targetPath,
-      contentBase64: encodeText(`${JSON.stringify(trip, null, 2)}\n`),
-      message,
-      sha: renamed ? undefined : item.sha
-    });
-
-    if (renamed) {
-      try {
-        await github.deleteFile({ path: item.path, sha: item.sha, message: `Alte Datei entfernt: ${item.path}` });
-      } catch (error) {
-        console.warn('Alte Datei konnte nicht entfernt werden:', error);
-      }
-    }
-
-    const index = state.trips.findIndex((t) => t.path === item.path || t.trip.id === trip.id);
-    const record = { trip, path: targetPath, sha };
-    if (index >= 0) state.trips[index] = record;
-    else state.trips.unshift(record);
-
-    state.trips.sort((a, b) => (b.trip.startDate || '').localeCompare(a.trip.startDate || ''));
-
-    toast('Gespeichert.', 'success');
-    watchDeploy();
-    return record;
-  } catch (error) {
-    toast(error.message, 'error');
-    return null;
-  } finally {
-    setLoading(false);
-    if (!$('[data-panel="editor"]').hidden) {
-      // Editor bleibt offen – nur Kopfzeile aktualisieren
-      renderEditorBar();
-    } else {
-      renderList();
-    }
-  }
-}
-
-/* ------------------------------------------------------- Medien aufräumen -- */
-
-let mediaShaCache = null;
-
-async function mediaShas(force = false) {
-  if (!mediaShaCache || force) {
-    const items = await github.listDir(MEDIA_DIR);
-    mediaShaCache = new Map(items.filter((i) => i.type === 'file').map((i) => [i.name, i.sha]));
-  }
-  return mediaShaCache;
-}
-
-/** Alle Bildpfade einer Reise (Titelbild, Einträge, jeweils Voll- und Vorschaubild). */
-function mediaPathsOf(trip) {
-  const paths = new Set();
-  const add = (image) => {
-    if (image?.src) paths.add(image.src);
-    if (image?.thumb) paths.add(image.thumb);
-  };
-  if (!trip) return paths;
-  add(trip.coverImage);
-  for (const entry of trip.entries || []) for (const image of entry.images || []) add(image);
-  return paths;
-}
-
-/**
- * Löscht Bilddateien, die nach dem Speichern von keiner Reise mehr verwendet
- * werden. Bewusst erst nach dem Speichern: Solange die Änderung nicht
- * geschrieben ist, könnte sonst eine noch referenzierte Datei verschwinden.
- */
-async function cleanUpMedia(previousPaths, keptTrip) {
-  const stillUsed = new Set();
-  for (const item of state.trips) {
-    const trip = item.trip.id === keptTrip?.id ? keptTrip : item.trip;
-    for (const path of mediaPathsOf(trip)) stillUsed.add(path);
-  }
-  if (keptTrip) for (const path of mediaPathsOf(keptTrip)) stillUsed.add(path);
-
-  const orphans = [...previousPaths].filter((path) => !stillUsed.has(path) && path.startsWith('media/'));
-  if (!orphans.length) return 0;
-
-  let removed = 0;
-  try {
-    const shas = await mediaShas(true);
-    for (const orphan of orphans) {
-      const name = orphan.replace(/^media\//, '');
-      const sha = shas.get(name);
-      if (!sha) continue;
-      try {
-        await github.deleteFile({ path: `${MEDIA_DIR}/${name}`, sha, message: `Nicht mehr verwendetes Bild entfernt: ${name}` });
-        shas.delete(name);
-        removed += 1;
-      } catch (error) {
-        console.warn(`Bild ${name} konnte nicht gelöscht werden:`, error);
-      }
-    }
-  } catch (error) {
-    console.warn('Bilder konnten nicht aufgeräumt werden:', error);
-  }
-  return removed;
+  await storeTrip(copy);
+  renderList();
+  toast('Kopie als Entwurf angelegt.', 'success');
 }
 
 /* ================================================================ Editor === */
 
 function openEditor(item) {
   state.current = normalizeTrip(structuredClone(item.trip));
-  state.currentPath = item.path;
-  state.currentSha = item.sha;
+  state.currentFile = item.file;
   state.openEntries = new Set();
   markDirty(false);
 
@@ -553,7 +476,7 @@ function renderEditor() {
           <span class="editor__name" data-editor-name>${escapeHtml(trip.title)}</span>
         </div>
         <div class="editor__bar-actions">
-          <a class="btn btn--quiet btn--small" href="${escapeHtml(publicUrl(trip.slug))}" target="_blank" rel="noopener">Vorschau</a>
+          <a class="btn btn--quiet btn--small" href="${escapeHtml(publicUrl(trip.slug))}" target="_blank" rel="noopener" title="Zeigt den zuletzt veröffentlichten Stand">Vorschau</a>
           <button class="btn btn--primary btn--small" type="button" data-save disabled>Speichern</button>
         </div>
       </div>
@@ -768,7 +691,7 @@ function renderCover() {
 }
 
 async function uploadCover(file) {
-  const image = await uploadFiles([file], $('[data-cover-progress]'), 'titelbild');
+  const image = await processFiles([file], $('[data-cover-progress]'), 'titelbild');
   if (image?.length) {
     state.current.coverImage = image[0];
     markDirty();
@@ -1032,7 +955,7 @@ function renderEntryImages(card, entry) {
       if (action === 'delete') {
         const ok = await confirmDialog({
           title: 'Bild entfernen?',
-          text: 'Das Bild wird aus diesem Tag entfernt. Wird es nirgendwo sonst verwendet, wird die Datei beim Speichern auch aus dem Repository gelöscht.',
+          text: 'Das Bild wird aus diesem Tag entfernt. Bereits veröffentlichte Bilddateien bleiben im Repository – sie lassen sich dort später von Hand aufräumen.',
           confirmLabel: 'Entfernen'
         });
         if (!ok) return;
@@ -1049,18 +972,18 @@ function renderEntryImages(card, entry) {
 }
 
 async function addEntryImages(entry, files, card) {
-  const uploaded = await uploadFiles(files, $('[data-entry-progress]', card), state.current.slug);
-  if (!uploaded?.length) return;
-  entry.images.push(...uploaded);
+  const added = await processFiles(files, $('[data-entry-progress]', card), state.current.slug);
+  if (!added?.length) return;
+  entry.images.push(...added);
   markDirty();
   renderEntries();
 }
 
 /**
- * Dateien verkleinern, hochladen und Fortschritt anzeigen.
- * Gibt die fertigen Bild-Datensätze zurück.
+ * Dateien verkleinern und lokal ablegen. Hochgeladen wird hier nichts -
+ * das passiert später gebündelt beim Veröffentlichen.
  */
-async function uploadFiles(files, progressBox, prefix) {
+async function processFiles(files, progressBox, prefix) {
   const usable = [...files].filter(isSupportedImage);
   if (!usable.length) {
     toast('Keine unterstützten Bilddateien ausgewählt.', 'error');
@@ -1080,35 +1003,29 @@ async function uploadFiles(files, progressBox, prefix) {
       </div>`;
   };
 
-  paint(`0 von ${total} hochgeladen`);
+  paint(`0 von ${total} verarbeitet`);
   const results = [];
 
   for (const file of usable) {
     try {
-      paint(`${done} von ${total} · „${file.name}“ wird verkleinert …`);
+      paint(`${done} von ${total} · „${file.name}" wird verkleinert …`);
       const prepared = await prepareImage(file);
       savedBytes += Math.max(0, prepared.originalSize - prepared.newSize);
 
-      paint(`${done} von ${total} · „${file.name}“ wird hochgeladen …`);
-      const image = await uploadImage({ github, mediaDir: MEDIA_DIR, prepared, prefix });
-
-      // Sofortige Vorschau, ohne auf GitHub zu warten
-      media.registerLocal(image.src, prepared.full);
-      media.registerLocal(image.thumb, prepared.thumb);
-
+      const image = await storeImage({ prepared, prefix });
       results.push(image);
       done += 1;
-      paint(`${done} von ${total} hochgeladen`);
+      paint(`${done} von ${total} verarbeitet`);
     } catch (error) {
       console.error(error);
-      toast(`„${file.name}“: ${error.message}`, 'error');
+      toast(`„${file.name}": ${error.message}`, 'error');
     }
   }
 
   box.innerHTML = '';
   if (results.length) {
-    toast(`${results.length} Bild${results.length === 1 ? '' : 'er'} hochgeladen${savedBytes > 1024 * 100 ? ` · ${formatBytes(savedBytes)} eingespart` : ''}.`, 'success');
-    watchDeploy();
+    toast(`${pluralize(results.length, 'Bild', 'Bilder')} hinzugefügt${savedBytes > 1024 * 100 ? ` · ${formatBytes(savedBytes)} eingespart` : ''}.`, 'success');
+    await refreshPendingBar();
   }
   return results;
 }
@@ -1130,6 +1047,7 @@ function wireDropzone(zone, onFiles) {
 }
 
 /* -------------------------------------------------------------- Speichern -- */
+/* -------------------------------------------------------------- Speichern -- */
 
 async function saveCurrent() {
   const trip = state.current;
@@ -1141,70 +1059,114 @@ async function saveCurrent() {
   if (trip.endDate < trip.startDate) { toast('Das Enddatum liegt vor dem Startdatum.', 'error'); return; }
 
   const taken = new Set(state.trips.filter((t) => t.trip.id !== trip.id).map((t) => t.trip.slug));
+  const previousSlug = state.currentFile.replace(/\.json$/, '');
   trip.slug = uniqueSlug(trip.slug || trip.title, taken);
-  trip.updatedAt = nowStamp();
 
-  const previousPaths = mediaPathsOf(state.trips.find((t) => t.trip.id === trip.id)?.trip);
-
-  const record = await persistTrip(
-    { trip, path: state.currentPath, sha: state.currentSha },
-    `Urlaub gespeichert: ${trip.title}`
-  );
-
-  if (record) {
-    const removed = await cleanUpMedia(previousPaths, record.trip);
-    if (removed) toast(`${removed} nicht mehr verwendete${removed === 1 ? 's Bild' : ' Bilder'} gelöscht.`);
-
-    // Wichtig: state.current NICHT ersetzen. Die Formularfelder und
-    // Bild-Aktionen im DOM halten Referenzen auf genau diese Objekte –
-    // eine frische Kopie würde alle folgenden Änderungen ins Leere laufen
-    // lassen. In der Liste liegt ohnehin eine eigene, normalisierte Fassung.
-    state.currentPath = record.path;
-    state.currentSha = record.sha;
-    markDirty(false);
-    const slugField = $('[data-field="slug"]');
-    if (slugField) slugField.value = trip.slug;
-    updateSlugPreview();
+  // Beim Umbenennen darf der alte lokale Eintrag nicht liegen bleiben.
+  if (previousSlug && previousSlug !== trip.slug) {
+    await localTrips.remove(previousSlug);
+    state.trips = state.trips.filter((t) => !(t.trip.id !== trip.id && t.trip.slug === previousSlug));
   }
+
+  const record = await storeTrip(trip);
+  state.currentFile = record.file;
+
+  markDirty(false);
+  const slugField = $('[data-field="slug"]');
+  if (slugField) slugField.value = trip.slug;
+  updateSlugPreview();
+  renderEditorBar();
+
+  toast(
+    previousSlug && previousSlug !== trip.slug
+      ? `Gespeichert. Die alte Datei ${previousSlug}.json musst du bei GitHub löschen.`
+      : 'Lokal gespeichert. Zum Veröffentlichen das Paket hochladen.',
+    'success'
+  );
 }
 
 async function createTrip() {
   const taken = new Set(state.trips.map((t) => t.trip.slug));
   const trip = emptyTrip({ title: 'Neuer Urlaub' });
   trip.slug = uniqueSlug('neuer-urlaub', taken);
-  openEditor({ trip, path: '', sha: '' });
+  openEditor({ trip, file: '' });
   markDirty(true);
   $('[data-field="title"]')?.select?.();
 }
 
-/* ---------------------------------------------------------- Deploy-Status -- */
+/* ---------------------------------------------------------- Veröffentlichen */
 
-let deployTimer = null;
-
-async function watchDeploy(attempt = 0) {
-  const bar = $('[data-deploy-bar]');
-  if (!bar) return;
-  clearTimeout(deployTimer);
-
-  const run = await github.latestRun();
-  if (!run) { bar.hidden = true; return; }
-
-  const status = run.status === 'completed' ? run.conclusion : run.status;
-  const labels = {
-    queued: 'Website-Build ist eingereiht …',
-    in_progress: 'Website wird neu gebaut …',
-    success: 'Website ist aktuell.',
-    failure: 'Der letzte Build ist fehlgeschlagen.',
-    cancelled: 'Der letzte Build wurde abgebrochen.'
-  };
-
-  bar.hidden = false;
-  $('[data-deploy-dot]', bar).dataset.status = status;
-  $('[data-deploy-text]', bar).textContent = labels[status] || `Build: ${status}`;
-
-  if ((run.status !== 'completed' || attempt === 0) && attempt < 24) {
-    deployTimer = setTimeout(() => watchDeploy(attempt + 1), run.status === 'completed' ? 12000 : 8000);
+async function openPublishDialog() {
+  if (state.dirty) {
+    const ok = await confirmDialog({
+      title: 'Ungespeicherte Änderungen',
+      text: 'Im Editor gibt es Änderungen, die noch nicht gespeichert sind. Sie kommen so nicht ins Paket.',
+      confirmLabel: 'Trotzdem fortfahren',
+      danger: false
+    });
+    if (!ok) return;
   }
+
+  const { changed, deleted, media: pendingMedia, bytes, total } = await pendingChanges();
+  if (!total) {
+    toast('Es gibt nichts zu veröffentlichen.');
+    return;
+  }
+
+  const dialog = $('[data-publish]');
+  $('[data-publish-summary]', dialog).innerHTML = `
+    <ul class="publish-list">
+      ${changed.length ? `<li><strong>${pluralize(changed.length, 'Reise', 'Reisen')}</strong> geändert
+        <span>${changed.map((e) => escapeHtml(e.trip.title)).join(', ')}</span></li>` : ''}
+      ${pendingMedia.length ? `<li><strong>${pluralize(pendingMedia.length, 'Bild', 'Bilder')}</strong> neu
+        <span>${formatBytes(bytes)}</span></li>` : ''}
+      ${deleted.length ? `<li><strong>${pluralize(deleted.length, 'Reise', 'Reisen')}</strong> zu löschen
+        <span>${deleted.map((e) => escapeHtml(e.trip.title)).join(', ')}</span></li>` : ''}
+    </ul>
+  `;
+
+  const deleteBox = $('[data-publish-deletions]', dialog);
+  deleteBox.hidden = deleted.length === 0;
+  if (deleted.length) {
+    $('[data-publish-delete-links]', deleteBox).innerHTML = deleted.map((entry) => `
+      <li>
+        <a href="${escapeHtml(repo.deleteUrl(`${repo.contentDir}/${entry.slug}.json`))}" target="_blank" rel="noopener">
+          ${escapeHtml(entry.trip.title)} löschen
+        </a>
+      </li>`).join('');
+  }
+
+  $('[data-publish-upload]', dialog).href = repo.uploadUrl();
+  dialog.hidden = false;
+  $('[data-publish-download]', dialog).focus();
+}
+
+async function doExport() {
+  setLoading(true, 'Paket wird geschnürt …');
+  try {
+    const { files, bytes } = await exportChanges(repo);
+    toast(`${pluralize(files, 'Datei', 'Dateien')} · ${formatBytes(bytes)} heruntergeladen.`, 'success');
+    $('[data-publish-step2]').hidden = false;
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function markPublished() {
+  const ok = await confirmDialog({
+    title: 'Änderungen als veröffentlicht abhaken?',
+    text: 'Die lokal gemerkten Änderungen werden verworfen. Mach das erst, wenn der Commit bei GitHub durch ist – sonst sind sie weg.',
+    confirmLabel: 'Erledigt, verwerfen'
+  });
+  if (!ok) return;
+
+  await clearAll();
+  $('[data-publish]').hidden = true;
+  $('[data-publish-step2]').hidden = true;
+  toast('Lokale Änderungen verworfen. Nach dem Build zeigt die Liste den neuen Stand.', 'success');
+  await loadTrips();
 }
 
 /* ================================================================== Start == */
@@ -1213,42 +1175,20 @@ function init() {
   initTheme();
 
   $('[data-repo-name]').textContent = `${repoConfig.owner}/${repoConfig.name}`;
+  for (const node of $$('[data-upload-link]')) node.href = repo.uploadUrl();
+
+  if (!isAvailable()) {
+    toast('Dieser Browser unterstützt keine lokale Ablage. Änderungen gehen beim Schließen verloren.', 'error');
+  }
 
   $('[data-form="pin"]').addEventListener('submit', (event) => {
     event.preventDefault();
     const pin = $('[data-pin-input]').value.trim();
-    if (pin) signInWithPin(pin);
+    if (pin) unlock(pin);
   });
 
-  $('[data-form="setup"]').addEventListener('submit', (event) => {
-    event.preventDefault();
-    const pin = $('[data-setup-pin]').value.trim();
-    const token = $('[data-setup-token]').value.trim();
-    if (pin && token) setUpAccess(pin, token);
-  });
-
-  $('[data-reset-vault]').addEventListener('click', async () => {
-    const ok = await confirmDialog({
-      title: 'Zugang zurücksetzen?',
-      text: 'Der verschlüsselte Token wird aus diesem Browser gelöscht. Zum Anmelden brauchst du danach wieder einen GitHub-Token.',
-      confirmLabel: 'Zurücksetzen'
-    });
-    if (!ok) return;
-    clearVault();
-    showLogin('', 'setup');
-  });
-
-  $('[data-logout]').addEventListener('click', async () => {
-    if (state.dirty) {
-      const ok = await confirmDialog({
-        title: 'Abmelden?',
-        text: 'Es gibt ungespeicherte Änderungen, die verloren gehen.',
-        confirmLabel: 'Trotzdem abmelden'
-      });
-      if (!ok) return;
-    }
-    github.clearToken();
-    state.trips = [];
+  $('[data-logout]').addEventListener('click', () => {
+    try { sessionStorage.removeItem('tagebuch:entsperrt'); } catch { /* egal */ }
     state.current = null;
     markDirty(false);
     showLogin();
@@ -1258,6 +1198,30 @@ function init() {
   $('[data-reload]').addEventListener('click', loadTrips);
   $('[data-go-list]').addEventListener('click', () => {
     if (state.current) leaveEditor();
+  });
+
+  for (const node of $$('[data-open-publish]')) node.addEventListener('click', openPublishDialog);
+  $('[data-publish-download]').addEventListener('click', doExport);
+  $('[data-publish-done]').addEventListener('click', markPublished);
+  for (const node of $$('[data-publish-close]')) {
+    node.addEventListener('click', () => {
+      $('[data-publish]').hidden = true;
+      $('[data-publish-step2]').hidden = true;
+    });
+  }
+
+  $('[data-discard-all]').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Alle offenen Änderungen verwerfen?',
+      text: 'Alles, was seit der letzten Veröffentlichung bearbeitet wurde, geht verloren.',
+      confirmLabel: 'Verwerfen'
+    });
+    if (!ok) return;
+    await clearAll();
+    state.current = null;
+    markDirty(false);
+    await loadTrips();
+    toast('Offene Änderungen verworfen.');
   });
 
   $('[data-list-search]').addEventListener('input', debounce((event) => {
@@ -1284,14 +1248,18 @@ function init() {
       event.preventDefault();
       if (state.dirty) saveCurrent();
     }
+    if (event.key === 'Escape' && !$('[data-publish]').hidden) {
+      $('[data-publish]').hidden = true;
+    }
   });
 
-  // Früher im Klartext gespeicherter Token: einmalig in die Einrichtung
-  // übernehmen, damit die Umstellung auf die PIN nahtlos ist.
-  const legacy = legacyToken();
-  if (legacy && !hasVault()) {
-    $('[data-setup-token]').value = legacy;
-    showLogin('', 'setup');
+  // Innerhalb einer Sitzung nicht erneut nach der PIN fragen
+  let unlocked = false;
+  try { unlocked = sessionStorage.getItem('tagebuch:entsperrt') === '1'; } catch { /* egal */ }
+
+  if (unlocked) {
+    showApp();
+    loadTrips();
   } else {
     showLogin();
   }

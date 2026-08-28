@@ -60,6 +60,8 @@ jobs:
           # Liefert den korrekten Unterpfad – auch bei eigener Domain.
           SITE_BASE: ${{ steps.pages.outputs.base_path }}
           SITE_URL: ${{ steps.pages.outputs.origin }}
+          # Der Verwaltungsbereich liest die Inhalte aus genau diesem Zweig.
+          SITE_BRANCH: ${{ github.ref_name }}
 
       - name: Artefakt hochladen
         uses: actions/upload-pages-artifact@v3

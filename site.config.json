@@ -6,10 +6,8 @@
   "language": "de",
   "locale": "de_DE",
   "timeZone": "Europe/Berlin",
-
   "siteUrl": "https://lencraft151-cloud.github.io/Tagebuch/",
   "basePath": "/Tagebuch/",
-
   "repo": {
     "owner": "lencraft151-cloud",
     "name": "Tagebuch",
@@ -17,14 +15,16 @@
     "contentDir": "content/trips",
     "mediaDir": "content/media"
   },
-
   "theme": {
     "defaultMode": "system",
     "accent": "#c2683a",
     "useGoogleFonts": true
   },
-
   "footer": {
     "note": "Gebaut mit Liebe zum Detail · gehostet auf GitHub Pages"
+  },
+  "admin": {
+    "pinSalt": "d654cf9d7de121b28bd84d7e",
+    "pinHash": "2fa39a951d5709fc1660038e038dab5622addc6a3ef1ef3584e94d513bd1d2f4"
   }
 }
