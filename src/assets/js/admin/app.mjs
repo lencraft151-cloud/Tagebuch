@@ -50,7 +50,23 @@ const state = {
 
 /* ======================================================== Hilfsfunktionen == */
 
+/** Pfad auf der Website (relativ) - taugt direkt als href. */
 const publicUrl = (slug) => `${config.base || '/'}reisen/${slug}/`;
+
+/**
+ * Vollständige URL zum Anzeigen und Teilen.
+ * Aus siteUrl wird nur der Ursprung genommen: Steht dort bereits ein Pfad
+ * (z. B. ".../Tagebuch"), würde ein simples Aneinanderhängen den Basispfad
+ * doppelt einsetzen.
+ */
+const siteOrigin = (() => {
+  try {
+    return new URL(config.siteUrl).origin;
+  } catch {
+    return '';
+  }
+})();
+const absolutePublicUrl = (slug) => `${siteOrigin}${publicUrl(slug)}`;
 
 function markDirty(dirty = true) {
   state.dirty = dirty;
@@ -708,7 +724,7 @@ function updateSlugPreview() {
   const preview = $('[data-slug-preview]');
   if (!preview) return;
   const slug = state.current.slug || slugify(state.current.title);
-  preview.textContent = `${config.siteUrl || ''}${publicUrl(slug)}`;
+  preview.textContent = absolutePublicUrl(slug) || publicUrl(slug);
 }
 
 function updateStatePreview() {

@@ -9,7 +9,8 @@
  * ausgelieferten Code liest, erfährt nichts; ohne die richtige PIN lässt sich
  * der gespeicherte Token nicht entschlüsseln.
  *
- * Technisch: PBKDF2-SHA256 (250.000 Runden) für die Schlüsselableitung,
+ * Technisch: PBKDF2-SHA256 (600.000 Runden, aktuelle OWASP-Empfehlung) für
+ * die Schlüsselableitung,
  * AES-GCM-256 für die Verschlüsselung. Beides über die Web-Crypto-API, die
  * einen sicheren Kontext braucht (HTTPS oder localhost) - auf GitHub Pages
  * immer gegeben.
@@ -17,7 +18,7 @@
 
 const STORAGE_KEY = 'tagebuch:vault';
 const LEGACY_KEY = 'tagebuch:gh-token';
-const ITERATIONS = 250000;
+const ITERATIONS = 600000;
 
 export class VaultError extends Error {
   constructor(message, code) {
