@@ -51,6 +51,12 @@ export function toast(message, variant = '') {
 
 let loadingDepth = 0;
 
+/** Text des Lade-Overlays ändern, ohne den Zähler zu verschieben. */
+export function setLoadingText(text) {
+  const overlay = $('[data-loading]');
+  if (overlay && !overlay.hidden) $('[data-loading-text]', overlay).textContent = text;
+}
+
 export function setLoading(active, text = 'Wird geladen …') {
   const overlay = $('[data-loading]');
   if (!overlay) return;

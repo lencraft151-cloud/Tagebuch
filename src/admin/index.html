@@ -33,39 +33,65 @@ window.__ADMIN_CONFIG__ = {{CONFIG}};
         <path d="M9 3v18"/><path d="M13 8h4"/><path d="M13 12h4"/>
       </svg>
     </span>
-    <h1 class="login__title">Verwaltung</h1>
-    <p class="login__lead">
-      Melde dich mit einem GitHub-Token an, um Urlaube anzulegen und zu bearbeiten.
-      Das Token bleibt in deinem Browser und wird nie an Dritte übertragen.
-    </p>
 
-    <form class="login__form" data-login-form>
+    <!-- Anmeldung mit PIN (Zugang bereits eingerichtet) -->
+    <form class="login__form" data-form="pin" hidden>
+      <h1 class="login__title">Anmelden</h1>
+      <p class="login__lead">Gib deine PIN ein, um die Urlaube zu verwalten.</p>
+
       <label class="input">
-        <span class="input__label">GitHub Personal Access Token</span>
-        <input type="password" name="token" autocomplete="current-password" spellcheck="false"
-               placeholder="github_pat_… oder ghp_…" required data-token-input>
+        <span class="sr-only">PIN</span>
+        <input class="pin-input" type="password" name="pin" inputmode="numeric" autocomplete="current-password"
+               pattern="[0-9]*" maxlength="16" placeholder="••••••" required autofocus data-pin-input>
       </label>
-      <label class="checkbox">
-        <input type="checkbox" name="remember" checked data-remember>
-        <span>Auf diesem Gerät angemeldet bleiben</span>
-      </label>
-      <button class="btn btn--primary btn--block" type="submit" data-login-submit>Anmelden</button>
+
+      <button class="btn btn--primary btn--block" type="submit">Anmelden</button>
       <p class="login__error" data-login-error hidden></p>
+
+      <p class="login__back">
+        <button class="linkish" type="button" data-reset-vault>Zugang auf diesem Gerät zurücksetzen</button>
+      </p>
     </form>
 
-    <details class="login__help">
-      <summary>Wie erstelle ich ein Token?</summary>
-      <ol>
-        <li>GitHub öffnen → <strong>Settings → Developer settings → Personal access tokens → Fine-grained tokens</strong>.</li>
-        <li><strong>Generate new token</strong> wählen und als <em>Resource owner</em> den Besitzer dieses Repositories setzen.</li>
-        <li>Unter <em>Repository access</em> nur dieses eine Repository auswählen: <code data-repo-name>…</code></li>
-        <li>Unter <em>Repository permissions</em> → <strong>Contents: Read and write</strong> setzen.</li>
-        <li>Token erzeugen, kopieren und hier einfügen.</li>
-      </ol>
-      <p class="login__note">
-        Tipp: Setze eine Ablaufzeit. Nach Ablauf einfach ein neues Token erstellen und erneut anmelden.
+    <!-- Ersteinrichtung: PIN wählen und Token einmalig hinterlegen -->
+    <form class="login__form" data-form="setup" hidden>
+      <h1 class="login__title">Zugang einrichten</h1>
+      <p class="login__lead">
+        Einmalig: Lege eine PIN fest und hinterlege deinen GitHub-Token.
+        Der Token wird mit der PIN verschlüsselt in diesem Browser gespeichert –
+        danach reicht die PIN zum Anmelden.
       </p>
-    </details>
+
+      <label class="input">
+        <span class="input__label">PIN</span>
+        <input class="pin-input" type="text" name="pin" inputmode="numeric" pattern="[0-9]*"
+               maxlength="16" value="151013" required data-setup-pin>
+        <span class="input__hint">Nur Ziffern. Merk sie dir gut – ohne PIN kommst du nicht mehr an den Token.</span>
+      </label>
+
+      <label class="input">
+        <span class="input__label">GitHub Personal Access Token</span>
+        <input type="password" name="token" autocomplete="off" spellcheck="false"
+               placeholder="github_pat_… oder ghp_…" required data-setup-token>
+      </label>
+
+      <button class="btn btn--primary btn--block" type="submit">Zugang einrichten</button>
+      <p class="login__error" data-setup-error hidden></p>
+
+      <details class="login__help">
+        <summary>Wie erstelle ich einen Token?</summary>
+        <ol>
+          <li>GitHub öffnen → <strong>Settings → Developer settings → Personal access tokens → Fine-grained tokens</strong>.</li>
+          <li><strong>Generate new token</strong> wählen und als <em>Resource owner</em> den Besitzer dieses Repositories setzen.</li>
+          <li>Unter <em>Repository access</em> nur dieses eine Repository auswählen: <code data-repo-name>…</code></li>
+          <li>Unter <em>Repository permissions</em> → <strong>Contents: Read and write</strong> setzen.</li>
+          <li>Token erzeugen, kopieren und hier einfügen.</li>
+        </ol>
+        <p class="login__note">
+          Setz eine Ablaufzeit. Läuft der Token ab, richtest du den Zugang hier einfach neu ein.
+        </p>
+      </details>
+    </form>
 
     <p class="login__back"><a href="{{BASE}}">← Zurück zur Website</a></p>
   </div>

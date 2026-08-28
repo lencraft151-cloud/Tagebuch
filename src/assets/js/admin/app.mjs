@@ -7,6 +7,7 @@
 
 import { GitHub, encodeText } from './github.mjs';
 import { prepareImage, uploadImage, createMediaResolver, isSupportedImage, formatBytes } from './media.mjs';
+import { createVault, openVault, hasVault, clearVault, legacyToken, VaultError } from './vault.mjs';
 import {
   normalizeTrip,
   emptyTrip,
@@ -21,7 +22,7 @@ import {
   sortTripsByDate
 } from '../lib/trips.mjs';
 import { formatDateRange, pluralize } from '../lib/format.mjs';
-import { $, $$, el, escapeHtml, icons, toast, setLoading, confirmDialog, debounce, initTheme, humanDate, humanDateTime } from './ui.mjs';
+import { $, $$, el, escapeHtml, icons, toast, setLoading, setLoadingText, confirmDialog, debounce, initTheme, humanDate, humanDateTime } from './ui.mjs';
 
 const config = window.__ADMIN_CONFIG__ || {};
 const repoConfig = config.repo || {};
@@ -77,12 +78,29 @@ async function hydrateImages(scope = document) {
 
 /* ============================================================== Anmeldung == */
 
-function showLogin(message = '') {
+function showLogin(message = '', which = null) {
   $('[data-view="login"]').hidden = false;
   $('[data-view="app"]').hidden = true;
-  const error = $('[data-login-error]');
-  error.hidden = !message;
-  error.textContent = message;
+
+  const mode = which || (hasVault() ? 'pin' : 'setup');
+  const pinForm = $('[data-form="pin"]');
+  const setupForm = $('[data-form="setup"]');
+  pinForm.hidden = mode !== 'pin';
+  setupForm.hidden = mode !== 'setup';
+
+  const error = mode === 'pin' ? $('[data-login-error]') : $('[data-setup-error]');
+  for (const node of [$('[data-login-error]'), $('[data-setup-error]')]) {
+    node.hidden = true;
+    node.textContent = '';
+  }
+  if (message) {
+    error.hidden = false;
+    error.textContent = message;
+  }
+
+  const field = mode === 'pin' ? $('[data-pin-input]') : $('[data-setup-pin]');
+  field?.focus();
+  if (mode === 'pin' && field) field.value = '';
 }
 
 function showApp() {
@@ -97,20 +115,64 @@ function showApp() {
   }
 }
 
-async function signIn(token, remember) {
-  setLoading(true, 'Anmeldung wird geprüft …');
-  try {
-    await github.signIn(token);
-    if (!remember) {
-      // Token nur für diese Sitzung im Speicher halten
-      try { localStorage.removeItem('tagebuch:gh-token'); } catch { /* ignorieren */ }
+/**
+ * Mit einem Token bei GitHub anmelden und die Urlaube laden.
+ * Ist `persistWithPin` gesetzt, wird der Tresor angelegt, sobald der Token
+ * geprüft ist - also bevor die (langsamere) Reise-Liste geladen wird.
+ */
+async function signInWithToken(token, { persistWithPin = '' } = {}) {
+  await github.signIn(token);
+
+  if (persistWithPin) {
+    try {
+      await createVault(persistWithPin, token);
+      toast('Zugang eingerichtet. Ab jetzt genügt die PIN.', 'success');
+    } catch (error) {
+      toast(`${error.message} Du bleibst für diese Sitzung angemeldet.`, 'error');
     }
-    media = createMediaResolver(github, MEDIA_DIR);
-    showApp();
-    await loadTrips();
+  }
+
+  media = createMediaResolver(github, MEDIA_DIR);
+  showApp();
+  await loadTrips();
+}
+
+/** Anmeldung per PIN: Token aus dem Tresor holen. */
+async function signInWithPin(pin) {
+  // Genau ein setLoading(true)/false-Paar: sonst bleibt das Overlay stehen
+  // und fängt sämtliche Klicks ab.
+  setLoading(true, 'Zugang wird entschlüsselt …');
+  try {
+    const token = await openVault(pin);
+    setLoadingText('Anmeldung wird geprüft …');
+    await signInWithToken(token);
   } catch (error) {
     github.clearToken();
-    showLogin(error.message || 'Anmeldung fehlgeschlagen.');
+    if (error instanceof VaultError) {
+      showLogin(error.message, 'pin');
+    } else {
+      // Die PIN stimmte, aber der Token ist abgelaufen oder zurückgezogen -
+      // direkt in die Neueinrichtung führen.
+      showLogin(`${error.message} Bitte einen neuen Token hinterlegen.`, 'setup');
+    }
+  } finally {
+    setLoading(false);
+  }
+}
+
+/** Ersteinrichtung: Token prüfen und verschlüsselt ablegen. */
+async function setUpAccess(pin, token) {
+  if (!/^\d{4,16}$/.test(pin)) {
+    showLogin('Die PIN muss aus 4 bis 16 Ziffern bestehen.', 'setup');
+    return;
+  }
+
+  setLoading(true, 'Token wird geprüft …');
+  try {
+    await signInWithToken(token, { persistWithPin: pin });
+  } catch (error) {
+    github.clearToken();
+    showLogin(error.message || 'Anmeldung fehlgeschlagen.', 'setup');
   } finally {
     setLoading(false);
   }
@@ -1136,11 +1198,28 @@ function init() {
 
   $('[data-repo-name]').textContent = `${repoConfig.owner}/${repoConfig.name}`;
 
-  $('[data-login-form]').addEventListener('submit', (event) => {
+  $('[data-form="pin"]').addEventListener('submit', (event) => {
     event.preventDefault();
-    const token = $('[data-token-input]').value.trim();
-    const remember = $('[data-remember]').checked;
-    if (token) signIn(token, remember);
+    const pin = $('[data-pin-input]').value.trim();
+    if (pin) signInWithPin(pin);
+  });
+
+  $('[data-form="setup"]').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const pin = $('[data-setup-pin]').value.trim();
+    const token = $('[data-setup-token]').value.trim();
+    if (pin && token) setUpAccess(pin, token);
+  });
+
+  $('[data-reset-vault]').addEventListener('click', async () => {
+    const ok = await confirmDialog({
+      title: 'Zugang zurücksetzen?',
+      text: 'Der verschlüsselte Token wird aus diesem Browser gelöscht. Zum Anmelden brauchst du danach wieder einen GitHub-Token.',
+      confirmLabel: 'Zurücksetzen'
+    });
+    if (!ok) return;
+    clearVault();
+    showLogin('', 'setup');
   });
 
   $('[data-logout]').addEventListener('click', async () => {
@@ -1156,7 +1235,6 @@ function init() {
     state.trips = [];
     state.current = null;
     markDirty(false);
-    $('[data-token-input]').value = '';
     showLogin();
   });
 
@@ -1192,10 +1270,15 @@ function init() {
     }
   });
 
-  // Bereits vorhandenes Token automatisch verwenden
-  const token = github.loadToken();
-  if (token) signIn(token, true);
-  else showLogin();
+  // Früher im Klartext gespeicherter Token: einmalig in die Einrichtung
+  // übernehmen, damit die Umstellung auf die PIN nahtlos ist.
+  const legacy = legacyToken();
+  if (legacy && !hasVault()) {
+    $('[data-setup-token]').value = legacy;
+    showLogin('', 'setup');
+  } else {
+    showLogin();
+  }
 }
 
 if (document.readyState === 'loading') {

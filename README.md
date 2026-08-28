@@ -16,7 +16,7 @@ inklusive Verwaltungsbereich zum Anlegen, Bearbeiten und Veröffentlichen von Ur
 
 1. [Schnellstart](#schnellstart)
 2. [Wie die Speicherung funktioniert](#wie-die-speicherung-funktioniert)
-3. [Verwaltungsbereich benutzen](#verwaltungsbereich-benutzen)
+3. [Verwaltungsbereich benutzen](#verwaltungsbereich-benutzen) – [Anmeldung mit PIN](#anmeldung-mit-pin)
 4. [Veröffentlichungsstatus und Ablaufzeiten](#veröffentlichungsstatus-und-ablaufzeiten)
 5. [Wichtig zur Sichtbarkeit](#wichtig-zur-sichtbarkeit)
 6. [Website anpassen](#website-anpassen)
@@ -34,11 +34,14 @@ inklusive Verwaltungsbereich zum Anlegen, Bearbeiten und Veröffentlichen von Ur
 
 Der Code liegt im Branch dieses Pull Requests. Nach dem Merge nach `main` geht es weiter.
 
-### 2. GitHub Pages aktivieren
+### 2. GitHub Pages
 
-Im Repository: **Settings → Pages → Build and deployment → Source: `GitHub Actions`**.
+Nichts zu tun – der Workflow schaltet Pages beim ersten Lauf selbst ein
+(`enablement: true` bei `actions/configure-pages`) und stellt die Quelle auf
+**GitHub Actions**.
 
-> Ohne diese Einstellung schlägt der Workflow mit „Get Pages site failed“ fehl.
+> Falls die Organisation das Aktivieren per Workflow untersagt, einmalig manuell:
+> **Settings → Pages → Build and deployment → Source: `GitHub Actions`**.
 
 ### 3. Ersten Build abwarten
 
@@ -58,10 +61,13 @@ Titel, Untertitel, Beschreibung und Autor eintragen. `siteUrl` und `basePath` m�
 nur angepasst werden, wenn du **lokal** die richtigen Links sehen willst – im Workflow
 werden beide Werte automatisch von GitHub gesetzt.
 
-### 5. Token erstellen und anmelden
+### 5. Zugang einrichten
 
 Verwaltungsbereich öffnen: `https://<benutzername>.github.io/<repository>/admin/`
-und mit einem Personal Access Token anmelden ([Anleitung unten](#token-erstellen)).
+
+Beim ersten Mal einmalig einen GitHub-Token hinterlegen
+([Anleitung unten](#token-erstellen)). Die PIN ist mit **`151013`** vorbelegt.
+Ab dann genügt zum Anmelden die PIN.
 
 ---
 
@@ -91,13 +97,13 @@ GitHub Pages:  fertige HTML-Seiten, ~1 Minute nach dem Speichern live
 | --- | --- |
 | Dauerhafte Speicherung ohne Server | Git-Repository als Datenspeicher – versioniert, mit vollständiger Historie und Wiederherstellung |
 | Bilder ablegen | Direkt im Repository unter `content/media`; im Browser vorher auf max. 2000 px verkleinert |
-| Login ohne Backend | GitHub-Token, das der Admin zur Laufzeit eingibt; liegt nur im `localStorage` des Browsers |
+| Login ohne Backend | PIN-Anmeldung: Der GitHub-Token wird einmalig hinterlegt und mit der PIN verschlüsselt im Browser abgelegt |
 | Funktionierende Vorschaubilder beim Teilen | Der Build erzeugt **pro Reise eine echte HTML-Seite** mit Open-Graph-Metadaten – eine reine Single-Page-App könnte das nicht |
 | Zeitgesteuerte Veröffentlichung | Sichtbarkeit wird zusätzlich im Browser gegen die aktuelle Uhrzeit geprüft, plus ein Neubau alle 6 Stunden |
 
 **Keine Geheimnisse im Code:** Im ausgelieferten JavaScript steht kein Passwort und
-kein Schlüssel – nur der öffentliche Repository-Name. Das Token gibt der Admin selbst
-ein und es verlässt den Browser nur in Richtung `api.github.com`.
+kein Schlüssel – nur der öffentliche Repository-Name. Der Token wird vom Admin
+eingegeben und verlässt den Browser nur in Richtung `api.github.com`.
 
 **Bildverkleinerung:** Ein 8-MB-Handyfoto würde das Repository aufblähen und die
 Website auf dem Smartphone lahmlegen. Beim Hochladen wird deshalb im Browser
@@ -110,6 +116,38 @@ Base64-Platzhalter für den weichen Ladeeffekt.
 
 Erreichbar unter `.../admin/`. **Es gibt bewusst keinen Link dorthin** – normale
 Besucher sehen den Bereich nicht. Lege dir ein Lesezeichen an.
+
+### Anmeldung mit PIN
+
+Der Verwaltungsbereich meldet sich mit einer **PIN** an – standardmäßig `151013`.
+
+So funktioniert das ohne Server:
+
+1. **Einmalig einrichten:** PIN festlegen und GitHub-Token einfügen.
+2. Der Token wird mit der PIN verschlüsselt (PBKDF2-SHA256, 250 000 Runden →
+   AES-GCM-256) und im `localStorage` dieses Browsers abgelegt.
+3. **Danach:** nur noch die PIN eingeben. Sie entschlüsselt den Token.
+
+Zwei Eigenschaften, die dabei wichtig sind:
+
+* **Die PIN steht nirgends im Code.** Es gibt keinen Vergleich à la
+  `if (pin === "151013")`. Die PIN *ist* das Schlüsselmaterial – bei falscher
+  Eingabe scheitert schon das Entschlüsseln. Wer den ausgelieferten
+  JavaScript-Code liest, erfährt daraus nichts.
+* **Der Token liegt nie im Klartext** im Browser-Speicher.
+
+Und was die PIN **nicht** leistet, ehrlich gesagt:
+
+* Sie schützt **ein Gerät**, nicht das Repository. Auf einem neuen Gerät (oder
+  nach dem Leeren der Browserdaten) brauchst du wieder den GitHub-Token –
+  daran führt bei statischem Hosting kein Weg vorbei, weil jeder Schreibzugriff
+  echte GitHub-Zugangsdaten benötigt.
+* Sechs Ziffern sind kurz. Wer Zugriff auf den entsperrten Browser hat, kommt
+  auch an den Tresor. Die 250 000 PBKDF2-Runden machen stumpfes Durchprobieren
+  langsam, aber nicht unmöglich. Willst du es fester, nimm eine längere PIN –
+  das Feld erlaubt bis zu 16 Ziffern.
+* Vergisst du die PIN, ist der gespeicherte Token verloren. Über
+  **„Zugang zurücksetzen“** richtest du ihn mit einem neuen Token wieder ein.
 
 ### Token erstellen
 
@@ -336,7 +374,10 @@ Der Build legt dann automatisch eine `CNAME`-Datei an; `basePath` wird zu `/`.
 | Workflow läuft, baut aber nichts | Der Push ging auf einen Nebenzweig. Veröffentlicht wird nur der Standard-Branch (**Settings → Branches**) |
 | Website zeigt 404 | Erster Build noch nicht durch, oder `basePath` passt nicht. Im Workflow wird er automatisch gesetzt |
 | Bilder und Styles fehlen | Meist ein falscher `basePath`. Lokal muss er zum Ordner passen (`/Tagebuch/`) |
-| Anmeldung: „Token ungültig oder abgelaufen“ | Neues Token erstellen; Fine-grained Tokens laufen ab |
+| „PIN falsch“ | Tippfehler – oder der Zugang wurde mit einer anderen PIN eingerichtet. Notfalls **Zugang zurücksetzen** |
+| Nach „Zugang zurücksetzen“ fehlt der Token | Das ist so gewollt: einmalig einen GitHub-Token einfügen, danach reicht wieder die PIN |
+| Anmeldung: „Token ungültig oder abgelaufen“ | Neues Token erstellen; Fine-grained Tokens laufen ab. Der Admin führt dann direkt in die Neueinrichtung |
+| „Verschlüsselung nicht verfügbar“ | Die Seite wurde über `http://` geöffnet. Web-Crypto braucht HTTPS (oder `localhost`) |
 | Anmeldung: „Keine Berechtigung“ | Dem Token fehlt **Contents: Read and write** für dieses Repository |
 | „Konflikt: Die Datei wurde zwischenzeitlich geändert“ | Der Urlaub wurde woanders bearbeitet. **Neu laden** und erneut speichern |
 | Änderung nicht sichtbar | Build läuft noch (Statusleiste im Admin) oder Browser-Cache. Einmal hart neu laden |
@@ -375,7 +416,7 @@ npm run check
 │       └── js/
 │           ├── site.js            Suche, Filter, Theme, Navigation
 │           ├── lightbox.mjs       Bildansicht
-│           └── admin/             GitHub-Client, Bildverarbeitung, Editor
+│           └── admin/             GitHub-Client, Tresor, Bildverarbeitung, Editor
 └── dist/                          Build-Ergebnis (nicht eingecheckt)
 ```
 

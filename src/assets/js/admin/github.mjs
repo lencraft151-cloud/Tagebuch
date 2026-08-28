@@ -2,12 +2,12 @@
  * Schlanker GitHub-REST-Client für den Admin-Bereich.
  *
  * Authentifizierung über ein Fine-grained Personal Access Token, das der
- * Admin zur Laufzeit eingibt. Das Token liegt ausschließlich im Browser
- * (localStorage) und steht nie im ausgelieferten Code.
+ * Admin einmalig eingibt. Der Token liegt ausschließlich im Browser -
+ * verschlüsselt mit der PIN (siehe vault.mjs) - und steht nie im
+ * ausgelieferten Code.
  */
 
 const API = 'https://api.github.com';
-const TOKEN_KEY = 'tagebuch:gh-token';
 
 export class GitHubError extends Error {
   constructor(message, status, body) {
@@ -62,28 +62,18 @@ export class GitHub {
     return `${this.owner}/${this.repo}`;
   }
 
-  loadToken() {
-    try {
-      this.token = localStorage.getItem(TOKEN_KEY) || '';
-    } catch {
-      this.token = '';
-    }
-    return this.token;
-  }
-
-  saveToken(token) {
+  /**
+   * Der Token wird nur im Arbeitsspeicher gehalten. Dauerhaft gespeichert
+   * wird er ausschließlich verschlüsselt im Tresor (siehe vault.mjs).
+   */
+  setToken(token) {
     this.token = String(token || '').trim();
-    try {
-      if (this.token) localStorage.setItem(TOKEN_KEY, this.token);
-      else localStorage.removeItem(TOKEN_KEY);
-    } catch { /* privater Modus: Token gilt nur für diese Sitzung */ }
   }
 
   clearToken() {
     this.token = '';
     this.user = null;
     this.repoInfo = null;
-    try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignorieren */ }
   }
 
   async request(path, options = {}) {
@@ -135,7 +125,7 @@ export class GitHub {
   /* ------------------------------------------------------ Anmeldung --- */
 
   async signIn(token) {
-    this.saveToken(token);
+    this.setToken(token);
     this.user = await this.request('/user');
     this.repoInfo = await this.request(`/repos/${this.repoPath}`);
     if (!this.repoInfo?.permissions?.push) {

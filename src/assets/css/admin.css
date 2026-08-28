@@ -43,6 +43,28 @@ body.admin {
 
 .login__form { display: grid; gap: 0.9rem; }
 
+.pin-input {
+  font-size: 1.6rem !important;
+  letter-spacing: 0.5em;
+  text-align: center;
+  text-indent: 0.5em;
+  font-variant-numeric: tabular-nums;
+  padding-block: 0.75rem !important;
+}
+.pin-input::placeholder { letter-spacing: 0.4em; opacity: 0.35; }
+
+.linkish {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+.linkish:hover { color: var(--accent); }
+
 .login__error {
   padding: 0.7rem 0.9rem;
   border-radius: var(--radius-s);
