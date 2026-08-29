@@ -398,7 +398,7 @@ async function handleListAction(action, item) {
       : (trip.status === 'archived' ? 'published' : 'archived');
     await storeTrip({ ...trip, status: next });
     renderList();
-    toast('Geändert. Zum Veröffentlichen das Paket hochladen.');
+    toast('Geändert. Zum Übertragen auf „Veröffentlichen“.');
     return;
   }
 
@@ -1112,8 +1112,8 @@ async function saveCurrent() {
 
   toast(
     renamed
-      ? `Gespeichert. Die alte Adresse „${previousSlug}" wird beim Veröffentlichen entfernt.`
-      : 'Lokal gespeichert. Zum Veröffentlichen das Paket hochladen.',
+      ? `Gespeichert. Die alte Adresse „${previousSlug}“ wird beim Veröffentlichen entfernt.`
+      : 'Gespeichert. Zum Übertragen auf „Veröffentlichen“.',
     'success'
   );
 }
@@ -1133,7 +1133,9 @@ function setPublishMode() {
   const dialog = $('[data-publish]');
   $('[data-publish-direct]', dialog).hidden = !writer.ready;
   $('[data-publish-setup]', dialog).hidden = writer.ready;
-  $('[data-publish-mark-done]', dialog).hidden = writer.ready;
+  // "Erledigt" gehört zum ZIP-Weg und erscheint erst, wenn das Paket
+  // heruntergeladen wurde - vorher gibt es nichts abzuhaken.
+  $('[data-publish-mark-done]', dialog).hidden = true;
   // Ohne Zugang ist der ZIP-Weg der eigentliche, also aufgeklappt.
   $('[data-publish-zip]', dialog).open = !writer.ready;
 }
