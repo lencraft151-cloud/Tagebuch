@@ -16,7 +16,7 @@ inklusive Verwaltungsbereich zum Anlegen, Bearbeiten und Veröffentlichen von Ur
 
 1. [Schnellstart](#schnellstart)
 2. [Wie die Speicherung funktioniert](#wie-die-speicherung-funktioniert)
-3. [Verwaltungsbereich benutzen](#verwaltungsbereich-benutzen) – [Änderungen veröffentlichen](#änderungen-veröffentlichen)
+3. [Verwaltungsbereich benutzen](#verwaltungsbereich-benutzen) – [Veröffentlichen](#veröffentlichen)
 4. [Veröffentlichungsstatus und Ablaufzeiten](#veröffentlichungsstatus-und-ablaufzeiten)
 5. [Wichtig zur Sichtbarkeit](#wichtig-zur-sichtbarkeit)
 6. [Website anpassen](#website-anpassen)
@@ -65,8 +65,9 @@ werden beide Werte automatisch von GitHub gesetzt.
 
 Verwaltungsbereich öffnen: `https://<benutzername>.github.io/<repository>/admin/`
 
-PIN eingeben – voreingestellt ist **`151013`**. Mehr braucht es nicht:
-kein Token, kein Konto, keine Einrichtung.
+PIN eingeben – voreingestellt ist **`151013`**. Zum Anschauen und Bearbeiten
+reicht das. Fürs Veröffentlichen mit einem Klick hinterlegst du beim ersten Mal
+einen GitHub-Zugang; der Dialog führt dich in zwei Schritten hindurch.
 
 ---
 
@@ -81,10 +82,8 @@ Verwaltungsbereich (Browser)
         │  liest ohne Anmeldung: raw.githubusercontent.com + data/manifest.json
         │  ändert nur lokal:     IndexedDB dieses Browsers
         │
-        │  „Veröffentlichen" → ZIP mit dem Ordner content/
-        ▼
-GitHub – Hochladen-Seite (dort bist du angemeldet)
-        │  Commit
+        │  „Veröffentlichen" → ein Commit über die GitHub-API
+        │  (ohne hinterlegten Zugang: ZIP herunterladen und dort ablegen)
         ▼
 Repository:  content/trips/*.json   ← ein JSON je Urlaub
              content/media/*.jpg    ← Bilder (Vollbild + Vorschau)
@@ -103,14 +102,14 @@ GitHub Pages:  fertige HTML-Seiten, ~1 Minute nach dem Commit live
 | --- | --- |
 | Dauerhafte Speicherung ohne Server | Git-Repository als Datenspeicher – versioniert, mit vollständiger Historie und Wiederherstellung |
 | Bilder ablegen | Direkt im Repository unter `content/media`; im Browser vorher auf max. 2000 px verkleinert |
-| Verwalten ohne Zugangsschlüssel | Lesen geht ohne Anmeldung (öffentliches Repository); geschrieben wird über die Hochladen-Seite von GitHub, wo du ohnehin angemeldet bist |
+| Verwalten | Lesen braucht keine Anmeldung (öffentliches Repository). Fürs Veröffentlichen mit einem Klick wird einmalig ein GitHub-Zugang hinterlegt – verschlüsselt mit der PIN. Ohne Zugang bleibt der ZIP-Weg |
 | Funktionierende Vorschaubilder beim Teilen | Der Build erzeugt **pro Reise eine echte HTML-Seite** mit Open-Graph-Metadaten – eine reine Single-Page-App könnte das nicht |
 | Zeitgesteuerte Veröffentlichung | Sichtbarkeit wird zusätzlich im Browser gegen die aktuelle Uhrzeit geprüft, plus ein Neubau alle 6 Stunden |
 
-**Keine Geheimnisse, nirgends:** Im ausgelieferten Code steht kein Passwort, kein
-Token und kein Schlüssel – nur der öffentliche Repository-Name. Es gibt auch
-nichts zu hinterlegen: Der Verwaltungsbereich kann von sich aus gar nichts ins
-Repository schreiben.
+**Keine Geheimnisse im Code:** Im ausgelieferten JavaScript steht kein Passwort
+und kein Schlüssel – nur der öffentliche Repository-Name. Der Zugang, den du
+für das Ein-Klick-Veröffentlichen hinterlegst, liegt ausschließlich in deinem
+Browser und dort nur verschlüsselt.
 
 **Bildverkleinerung:** Ein 8-MB-Handyfoto würde das Repository aufblähen und die
 Website auf dem Smartphone lahmlegen. Beim Hochladen wird deshalb im Browser
@@ -127,24 +126,13 @@ Besucher sehen den Bereich nicht. Lege dir ein Lesezeichen an.
 ### Anmeldung
 
 Der Verwaltungsbereich fragt nur nach einer **PIN** – voreingestellt `151013`.
-Kein GitHub-Token, kein Konto, keine Einrichtung.
 
-Das geht, weil der Bereich **nichts schreibt**:
-
-* **Lesen** – GitHub liefert die Dateien öffentlicher Repositories über
-  `raw.githubusercontent.com` frei aus, mit CORS-Freigabe. Der Browser holt sich
-  die Reisen also direkt, auch Entwürfe. Welche Dateien es gibt, steht in
-  `data/manifest.json`, das der Build miterzeugt.
-* **Ändern** – alles Bearbeitete bleibt zunächst in der IndexedDB deines
-  Browsers. Nichts davon geht ins Netz.
-* **Veröffentlichen** – zwei Klicks: ZIP herunterladen, bei GitHub ablegen.
-
-Zur PIN, ehrlich gesagt: Sie ist ein Riegel gegen versehentliches Verstellen,
-keine Zugangssperre. Sie schützt kein Geheimnis, denn veröffentlichen kann
-ohnehin nur, wer bei GitHub Schreibrechte auf das Repository hat. Im Code steht
-nur ein gesalzener SHA-256-Hash, damit die Ziffern nicht offen herumliegen –
-eine sechsstellige Zahl ließe sich aber in Sekunden durchprobieren. Verlass dich
-also nicht darauf, dass sie jemanden ernsthaft aufhält.
+* **Lesen** braucht keine Anmeldung: GitHub liefert die Dateien öffentlicher
+  Repositories über `raw.githubusercontent.com` frei aus, mit CORS-Freigabe.
+  Der Browser holt sich die Reisen direkt, auch Entwürfe.
+* **Ändern** passiert zunächst nur lokal, in der IndexedDB deines Browsers.
+* **Veröffentlichen** geht mit einem Klick, sobald einmalig ein GitHub-Zugang
+  hinterlegt ist. Ohne Zugang bleibt der ZIP-Weg.
 
 Andere PIN setzen:
 
@@ -153,6 +141,46 @@ npm run set-pin -- 240719
 ```
 
 Danach die geänderte `site.config.json` committen.
+
+### Veröffentlichen
+
+Oben rechts auf **Veröffentlichen**, dann **Jetzt veröffentlichen**. Alles –
+geänderte Reisen, neue Bilder, Löschungen – geht als **ein** Commit ins
+Repository. Nach etwa einer Minute ist die Website aktuell.
+
+#### Einmalig: Zugang hinterlegen
+
+Beim ersten Mal führt der Dialog durch zwei Schritte:
+
+1. **Zugang erzeugen** – der Knopf öffnet GitHubs Token-Seite mit bereits
+   gesetztem Umfang. Unten auf *Generate token*, Wert kopieren.
+2. **Einfügen und speichern** – der Zugang wird mit deiner PIN verschlüsselt
+   (PBKDF2-SHA256, 600 000 Runden → AES-GCM-256) im Browser abgelegt.
+
+Ab dann entsperrt die PIN beim Öffnen automatisch auch den Zugang.
+
+Was du dabei wissen solltest:
+
+* Der vorbereitete Link erzeugt einen **klassischen Token mit `repo`-Umfang** –
+  der gilt für *alle* deine Repositories. Enger geht es über den Hinweis
+  „Lieber enger begrenzt?“ im Dialog: ein Fine-grained Token nur für dieses
+  Repository mit *Contents: Read and write*. Ein paar Klicks mehr, deutlich
+  kleinerer Radius.
+* Der Zugang liegt **nur in diesem Browser** und nur verschlüsselt. Auf einem
+  anderen Gerät richtest du ihn neu ein – oder nimmst dort den ZIP-Weg.
+* Wird der Token bei GitHub widerrufen oder läuft er ab, meldet der Dialog das
+  und führt direkt zurück in die Einrichtung.
+* Setz eine Ablaufzeit. Ein Zugang, der ewig gilt, ist ein Zugang, den man
+  vergisst.
+
+#### Ohne Zugang: das Paket
+
+Im Dialog unter **„Ohne Zugang veröffentlichen“**: ZIP herunterladen, entpacken,
+den Ordner `content` auf die Hochladen-Seite von GitHub ziehen, *Commit changes*.
+Danach im Verwaltungsbereich auf **Erledigt**, das leert die lokale Merkliste.
+
+> **Achtung:** Offene Änderungen liegen nur in **diesem** Browser. Leerst du die
+> Browserdaten, bevor du veröffentlicht hast, sind sie weg.
 
 ### Was automatisch aufgeräumt wird
 
@@ -188,28 +216,6 @@ Von Hand prüfen, was passieren würde:
 ```bash
 npm run cleanup -- --dry-run
 ```
-
-### Änderungen veröffentlichen
-
-1. Oben rechts auf **Veröffentlichen**.
-2. **ZIP herunterladen** – darin liegt der Ordner `content` mit genau den
-   geänderten Dateien.
-3. ZIP entpacken, **Hochladen-Seite öffnen** und den Ordner `content`
-   hineinziehen, dann *Commit changes*.
-4. Zurück im Verwaltungsbereich auf **Erledigt** – das verwirft die lokale
-   Merkliste.
-
-Nach etwa einer Minute ist alles live. Löschungen und verwaiste Bilder räumt
-GitHub Actions dabei von selbst weg.
-
-**Löschen läuft mit.** Hochladen kann keine Datei entfernen – deshalb schreibt
-der Verwaltungsbereich stattdessen eine Löschmarkierung. GitHub Actions führt
-das Löschen beim nächsten Build wirklich aus und committet das Aufräumen selbst.
-Für dich ändert sich nichts: löschen, veröffentlichen, fertig.
-
-> **Achtung:** Die offenen Änderungen liegen nur in **diesem** Browser. Leerst du
-> die Browserdaten, bevor du veröffentlicht hast, sind sie weg. Für längere
-> Arbeit lieber zwischendurch einmal hochladen.
 
 ### Was du dort tun kannst
 
@@ -428,6 +434,8 @@ Der Build legt dann automatisch eine `CNAME`-Datei an; `basePath` wird zu `/`.
 | Website zeigt 404 | Erster Build noch nicht durch, oder `basePath` passt nicht. Im Workflow wird er automatisch gesetzt |
 | Bilder und Styles fehlen | Meist ein falscher `basePath`. Lokal muss er zum Ordner passen (`/Tagebuch/`) |
 | „PIN falsch“ | Tippfehler – oder die PIN wurde mit `npm run set-pin` geändert |
+| „Dem Zugang fehlen Schreibrechte“ | Der Token gilt nicht für dieses Repository. Neu erzeugen – bei Fine-grained Tokens *Contents: Read and write* setzen |
+| „Das Repository wurde zwischenzeitlich geändert“ | Jemand (oder der Aufräum-Job) hat inzwischen committet. **Neu laden**, dann erneut veröffentlichen |
 | Reisen werden nicht geladen | Das Repository muss öffentlich sein (sonst gibt GitHub die Rohdateien nicht heraus) und der erste Build muss durch sein |
 | Offene Änderungen sind verschwunden | Sie lagen in der IndexedDB dieses Browsers. Nach dem Leeren der Browserdaten oder in einem privaten Fenster sind sie weg |
 | Hochgeladenes ZIP legt Dateien falsch ab | Das ZIP muss **entpackt** und der Ordner `content` hineingezogen werden – nicht das ZIP selbst |
@@ -471,7 +479,7 @@ npm run check
 │       └── js/
 │           ├── site.js            Suche, Filter, Theme, Navigation
 │           ├── lightbox.mjs       Bildansicht
-│           └── admin/             Repo-Lesen, lokale Ablage, ZIP, Editor
+│           └── admin/             Repo-Lesen, lokale Ablage, Veröffentlichen, Editor
 └── dist/                          Build-Ergebnis (nicht eingecheckt)
 ```
 

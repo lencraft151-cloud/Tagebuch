@@ -177,45 +177,92 @@ window.__ADMIN_CONFIG__ = {{CONFIG}};
   <div class="modal__backdrop" data-publish-close></div>
   <div class="modal__box publish__box">
     <h2 class="modal__title" id="publish-title">Veröffentlichen</h2>
-    <p class="modal__text">
-      Dieser Bereich schreibt nichts ins Repository – deshalb in zwei Schritten,
-      ganz ohne Zugangsschlüssel.
-    </p>
-
     <div data-publish-summary></div>
 
-    <ol class="publish__steps">
-      <li>
-        <strong>Paket herunterladen</strong>
-        <p>Ein ZIP mit dem Ordner <code>content</code> – genau so, wie das Repository aufgebaut ist.</p>
-        <button class="btn btn--primary" type="button" data-publish-download>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 4v12"/><path d="M7 11l5 5 5-5"/></svg>
-          ZIP herunterladen
-        </button>
-      </li>
-      <li data-publish-step2 hidden>
-        <strong>Bei GitHub ablegen</strong>
-        <p>ZIP entpacken, den Ordner <code>content</code> auf die Hochladen-Seite ziehen, <em>Commit changes</em> klicken. Die Website baut sich danach selbst neu.</p>
-        <a class="btn btn--quiet" data-publish-upload target="_blank" rel="noopener">
-          Hochladen-Seite öffnen
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
-        </a>
-      </li>
-    </ol>
+    <!-- Zugang vorhanden: ein Klick -->
+    <div data-publish-direct hidden>
+      <button class="btn btn--primary btn--block btn--big" type="button" data-publish-now>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/></svg>
+        Jetzt veröffentlichen
+      </button>
+      <p class="publish__hint">
+        Alles wandert in einem Commit ins Repository. Die Website ist danach in
+        etwa einer Minute aktuell.
+      </p>
+      <div class="publish__progress" data-publish-progress hidden>
+        <span data-publish-progress-text>…</span>
+        <span class="upload-progress__bar"><span class="upload-progress__fill" data-publish-progress-fill style="width:0%"></span></span>
+      </div>
+      <p class="publish__done" data-publish-done-note hidden>
+        <strong>Veröffentlicht.</strong>
+        <a data-publish-commit target="_blank" rel="noopener">Commit ansehen</a> ·
+        <a data-publish-site target="_blank" rel="noopener">Website öffnen</a>
+      </p>
+    </div>
+
+    <!-- Kein Zugang: einmalig einrichten -->
+    <div data-publish-setup hidden>
+      <p class="modal__text">
+        Für das Veröffentlichen mit einem Klick braucht es einmalig einen
+        GitHub-Zugang. Danach nie wieder.
+      </p>
+      <ol class="publish__steps">
+        <li>
+          <strong>Zugang bei GitHub erzeugen</strong>
+          <p>Der Link öffnet die Seite mit bereits gesetztem Umfang – unten auf <em>Generate token</em> klicken und den Wert kopieren.</p>
+          <a class="btn btn--quiet" data-token-link target="_blank" rel="noopener">
+            Zugang erzeugen
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+          </a>
+        </li>
+        <li>
+          <strong>Hier einfügen</strong>
+          <p>Wird mit deiner PIN verschlüsselt in diesem Browser gespeichert.</p>
+          <label class="input">
+            <span class="sr-only">GitHub-Zugang</span>
+            <input type="password" autocomplete="off" spellcheck="false" placeholder="ghp_… oder github_pat_…" data-token-field>
+          </label>
+          <button class="btn btn--primary" type="button" data-token-save>Zugang speichern</button>
+          <p class="login__error" data-token-error hidden></p>
+        </li>
+      </ol>
+      <details class="publish__more">
+        <summary>Lieber enger begrenzt?</summary>
+        <p>
+          Der Link oben erzeugt einen klassischen Zugang, der für alle deine
+          Repositories gilt. Enger geht es mit einem
+          <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Fine-grained Token</a>:
+          dort nur <code data-repo-name>…</code> auswählen und unter
+          <em>Repository permissions</em> → <strong>Contents: Read and write</strong> setzen.
+        </p>
+      </details>
+    </div>
+
+    <!-- Immer verfügbar: Rückfallweg ohne Zugang -->
+    <details class="publish__more" data-publish-zip>
+      <summary>Ohne Zugang veröffentlichen (Paket herunterladen)</summary>
+      <p>
+        Lädt ein ZIP mit dem Ordner <code>content</code> herunter. Entpacken, den
+        Ordner auf die Hochladen-Seite von GitHub ziehen, <em>Commit changes</em>.
+      </p>
+      <div class="publish__zip-actions">
+        <button class="btn btn--quiet btn--small" type="button" data-publish-download>ZIP herunterladen</button>
+        <a class="btn btn--quiet btn--small" data-publish-upload target="_blank" rel="noopener">Hochladen-Seite öffnen</a>
+      </div>
+    </details>
 
     <div class="publish__deletions" data-publish-deletions hidden>
-      <strong>Wird automatisch gelöscht</strong>
+      <strong>Wird mitgelöscht</strong>
       <p>
-        Im Paket stecken Löschmarkierungen. GitHub Actions entfernt diese Reisen
-        beim nächsten Build – zusammen mit Bildern, die keine andere Reise mehr
-        verwendet – und committet das Aufräumen selbst.
+        Diese Reisen werden entfernt – zusammen mit Bildern, die keine andere
+        Reise mehr verwendet.
       </p>
       <ul data-publish-delete-list></ul>
     </div>
 
     <div class="modal__actions">
       <button class="btn btn--quiet" type="button" data-publish-close>Schließen</button>
-      <button class="btn btn--quiet" type="button" data-publish-done>Erledigt</button>
+      <button class="btn btn--quiet" type="button" data-publish-mark-done hidden>Erledigt</button>
     </div>
   </div>
 </div>

@@ -19,7 +19,9 @@
 import { prepareImage, storeImage, createMediaResolver, isSupportedImage, formatBytes } from './media.mjs';
 import { Repo, RepoError } from './repo.mjs';
 import { localTrips, localMedia, clearAll, isAvailable } from './localstore.mjs';
-import { pendingChanges, exportChanges, exportTrip } from './publish.mjs';
+import { pendingChanges, exportChanges, exportTrip, publishDirect } from './publish.mjs';
+import { GitHubWriter, tokenSetupUrl } from './github-write.mjs';
+import { createVault, openVault, hasVault, clearVault } from './vault.mjs';
 import {
   normalizeTrip,
   emptyTrip,
@@ -49,6 +51,14 @@ const repo = new Repo({
 
 const media = createMediaResolver(repo);
 
+// Nur für das Ein-Klick-Veröffentlichen. Ohne hinterlegten Zugang bleibt der
+// Verwaltungsbereich vollständig nutzbar - dann eben über das ZIP.
+const writer = new GitHubWriter({
+  owner: repoConfig.owner,
+  name: repoConfig.name,
+  branch: repoConfig.branch || 'main'
+});
+
 const state = {
   trips: [],          // { trip, file, source: 'repo' | 'lokal', dirty, deleted }
   current: null,
@@ -56,7 +66,8 @@ const state = {
   dirty: false,
   search: '',
   statusFilter: '',
-  openEntries: new Set()
+  openEntries: new Set(),
+  pin: ''            // nur im Arbeitsspeicher, entsperrt den Zugangs-Tresor
 };
 
 /* ======================================================== Hilfsfunktionen == */
@@ -159,6 +170,19 @@ async function unlock(pin) {
       showLogin('PIN falsch.');
       return;
     }
+    state.pin = pin;
+
+    // Ist ein Zugang hinterlegt, wird er mit derselben PIN gleich entsperrt.
+    if (hasVault()) {
+      try {
+        setLoadingText('Zugang wird entsperrt …');
+        writer.setToken(await openVault(pin));
+      } catch (error) {
+        console.warn('Zugang konnte nicht entsperrt werden:', error);
+        writer.clear();
+      }
+    }
+
     showApp();
     await loadTrips();
   } catch (error) {
@@ -189,7 +213,8 @@ async function loadTrips() {
     for (const item of manifest?.trips || []) {
       try {
         const raw = await repo.loadTrip(item.file);
-        remote.push({ trip: normalizeTrip(raw), file: item.file, source: 'repo' });
+        // null heißt: seit dem letzten Build gelöscht - einfach übergehen.
+        if (raw) remote.push({ trip: normalizeTrip(raw), file: item.file, source: 'repo' });
       } catch (error) {
         console.error(`Fehler bei ${item.file}:`, error);
         toast(`„${item.file}" konnte nicht geladen werden.`, 'error');
@@ -1104,11 +1129,20 @@ async function createTrip() {
 
 /* ---------------------------------------------------------- Veröffentlichen */
 
+function setPublishMode() {
+  const dialog = $('[data-publish]');
+  $('[data-publish-direct]', dialog).hidden = !writer.ready;
+  $('[data-publish-setup]', dialog).hidden = writer.ready;
+  $('[data-publish-mark-done]', dialog).hidden = writer.ready;
+  // Ohne Zugang ist der ZIP-Weg der eigentliche, also aufgeklappt.
+  $('[data-publish-zip]', dialog).open = !writer.ready;
+}
+
 async function openPublishDialog() {
   if (state.dirty) {
     const ok = await confirmDialog({
       title: 'Ungespeicherte Änderungen',
-      text: 'Im Editor gibt es Änderungen, die noch nicht gespeichert sind. Sie kommen so nicht ins Paket.',
+      text: 'Im Editor gibt es Änderungen, die noch nicht gespeichert sind. Sie werden so nicht veröffentlicht.',
       confirmLabel: 'Trotzdem fortfahren',
       danger: false
     });
@@ -1141,8 +1175,103 @@ async function openPublishDialog() {
   }
 
   $('[data-publish-upload]', dialog).href = repo.uploadUrl();
+  $('[data-token-link]', dialog).href = tokenSetupUrl(repo.name);
+  $('[data-publish-progress]', dialog).hidden = true;
+  $('[data-publish-done-note]', dialog).hidden = true;
+  $('[data-token-error]', dialog).hidden = true;
+
+  setPublishMode();
   dialog.hidden = false;
-  $('[data-publish-download]', dialog).focus();
+  (writer.ready ? $('[data-publish-now]', dialog) : $('[data-token-field]', dialog))?.focus();
+}
+
+/** Ein Klick: alles in einem Commit ins Repository. */
+async function publishNow() {
+  const dialog = $('[data-publish]');
+  const button = $('[data-publish-now]', dialog);
+  const progress = $('[data-publish-progress]', dialog);
+  const fill = $('[data-publish-progress-fill]', dialog);
+  const label = $('[data-publish-progress-text]', dialog);
+
+  button.disabled = true;
+  progress.hidden = false;
+  $('[data-publish-done-note]', dialog).hidden = true;
+
+  try {
+    const result = await publishDirect({
+      writer,
+      repo,
+      onProgress: (text, share) => {
+        label.textContent = text;
+        fill.style.width = `${Math.round(share * 100)}%`;
+      }
+    });
+
+    // Erst nach dem erfolgreichen Commit die lokale Merkliste leeren.
+    await clearAll();
+
+    fill.style.width = '100%';
+    progress.hidden = true;   // der Erfolgshinweis übernimmt
+    const note = $('[data-publish-done-note]', dialog);
+    $('[data-publish-commit]', note).href = result.url;
+    $('[data-publish-site]', note).href = config.siteUrl || config.base || '/';
+    note.hidden = false;
+
+    toast(`Veröffentlicht: ${pluralize(result.files, 'Datei', 'Dateien')}${result.deletions ? `, ${result.deletions} gelöscht` : ''}.`, 'success');
+    await loadTrips();
+    await refreshPendingBar();
+  } catch (error) {
+    progress.hidden = true;
+    toast(error.message, 'error');
+    if (error.status === 401 || error.status === 403) {
+      // Zugang taugt nicht mehr - zurück in die Einrichtung.
+      writer.clear();
+      clearVault();
+      setPublishMode();
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** Zugang einmalig hinterlegen (verschlüsselt mit der PIN). */
+async function saveAccess() {
+  const dialog = $('[data-publish]');
+  const field = $('[data-token-field]', dialog);
+  const error = $('[data-token-error]', dialog);
+  const token = field.value.trim();
+
+  error.hidden = true;
+  if (!token) {
+    error.hidden = false;
+    error.textContent = 'Bitte den Zugang einfügen.';
+    return;
+  }
+
+  setLoading(true, 'Zugang wird geprüft …');
+  try {
+    writer.setToken(token);
+    await writer.verify();
+
+    if (state.pin) {
+      setLoadingText('Zugang wird verschlüsselt …');
+      try {
+        await createVault(state.pin, token);
+      } catch (vaultError) {
+        toast(`${vaultError.message} Der Zugang gilt nur für diese Sitzung.`, 'error');
+      }
+    }
+
+    field.value = '';
+    setPublishMode();
+    toast('Zugang gespeichert. Ab jetzt genügt ein Klick.', 'success');
+  } catch (caught) {
+    writer.clear();
+    error.hidden = false;
+    error.textContent = caught.message;
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function doExport() {
@@ -1150,7 +1279,7 @@ async function doExport() {
   try {
     const { files, bytes } = await exportChanges(repo);
     toast(`${pluralize(files, 'Datei', 'Dateien')} · ${formatBytes(bytes)} heruntergeladen.`, 'success');
-    $('[data-publish-step2]').hidden = false;
+    $('[data-publish-mark-done]').hidden = false;
   } catch (error) {
     toast(error.message, 'error');
   } finally {
@@ -1168,7 +1297,6 @@ async function markPublished() {
 
   await clearAll();
   $('[data-publish]').hidden = true;
-  $('[data-publish-step2]').hidden = true;
   toast('Lokale Änderungen verworfen. Nach dem Build zeigt die Liste den neuen Stand.', 'success');
   await loadTrips();
 }
@@ -1194,6 +1322,8 @@ function init() {
   $('[data-logout]').addEventListener('click', () => {
     try { sessionStorage.removeItem('tagebuch:entsperrt'); } catch { /* egal */ }
     state.current = null;
+    state.pin = '';
+    writer.clear();   // der verschlüsselte Zugang bleibt, nur der Klartext geht
     markDirty(false);
     showLogin();
   });
@@ -1205,13 +1335,15 @@ function init() {
   });
 
   for (const node of $$('[data-open-publish]')) node.addEventListener('click', openPublishDialog);
+  $('[data-publish-now]').addEventListener('click', publishNow);
+  $('[data-token-save]').addEventListener('click', saveAccess);
+  $('[data-token-field]').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); saveAccess(); }
+  });
   $('[data-publish-download]').addEventListener('click', doExport);
-  $('[data-publish-done]').addEventListener('click', markPublished);
+  $('[data-publish-mark-done]').addEventListener('click', markPublished);
   for (const node of $$('[data-publish-close]')) {
-    node.addEventListener('click', () => {
-      $('[data-publish]').hidden = true;
-      $('[data-publish-step2]').hidden = true;
-    });
+    node.addEventListener('click', () => { $('[data-publish]').hidden = true; });
   }
 
   $('[data-discard-all]').addEventListener('click', async () => {
@@ -1257,11 +1389,12 @@ function init() {
     }
   });
 
-  // Innerhalb einer Sitzung nicht erneut nach der PIN fragen
+  // Innerhalb einer Sitzung nicht erneut nach der PIN fragen - außer es ist ein
+  // Zugang hinterlegt, denn den entsperrt nur die PIN.
   let unlocked = false;
   try { unlocked = sessionStorage.getItem('tagebuch:entsperrt') === '1'; } catch { /* egal */ }
 
-  if (unlocked) {
+  if (unlocked && !hasVault()) {
     showApp();
     loadTrips();
   } else {

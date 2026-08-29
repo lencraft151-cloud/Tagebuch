@@ -116,3 +116,49 @@ export function exportTrip(trip) {
   const blob = new Blob([`${JSON.stringify(trip, null, 2)}\n`], { type: 'application/json' });
   download(blob, `${trip.slug}.json`);
 }
+
+/* ------------------------------------------------- Direkt veröffentlichen -- */
+
+/**
+ * Alles Offene in einem Commit ins Repository schreiben.
+ *
+ * Gelöschte Reisen werden hier wirklich gelöscht (die Baum-API kann das) -
+ * eine Löschmarkierung braucht es nur auf dem ZIP-Weg. Nicht mehr verwendete
+ * Bilder räumt anschließend der Aufräum-Schritt in GitHub Actions weg.
+ */
+export async function publishDirect({ writer, repo, onProgress }) {
+  const { changed, deleted, media, total } = await pendingChanges();
+  if (!total) throw new Error('Es gibt nichts zu veröffentlichen.');
+
+  const files = [];
+  for (const entry of changed) {
+    files.push({
+      path: `${repo.contentDir}/${entry.slug}.json`,
+      text: `${JSON.stringify(entry.trip, null, 2)}\n`
+    });
+  }
+  for (const item of media) {
+    if (item.full) {
+      files.push({ path: `${repo.mediaDir}/${item.src.replace(/^media\//, '')}`, bytes: await blobToBytes(item.full) });
+    }
+    if (item.thumbBlob && item.thumb) {
+      files.push({ path: `${repo.mediaDir}/${item.thumb.replace(/^media\//, '')}`, bytes: await blobToBytes(item.thumbBlob) });
+    }
+  }
+
+  const deletions = deleted.map((entry) => `${repo.contentDir}/${entry.slug}.json`);
+
+  const parts = [];
+  if (changed.length) parts.push(`${changed.length} Reise(n) aktualisiert`);
+  if (media.length) parts.push(`${media.length} Bild(er) hinzugefügt`);
+  if (deleted.length) parts.push(`${deleted.length} Reise(n) gelöscht`);
+
+  const result = await writer.publish({
+    files,
+    deletions,
+    message: `Reisearchiv: ${parts.join(', ')}\n\nVeröffentlicht aus dem Verwaltungsbereich.`,
+    onProgress
+  });
+
+  return { ...result, files: files.length, deletions: deletions.length };
+}

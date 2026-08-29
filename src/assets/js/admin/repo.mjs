@@ -71,13 +71,22 @@ export class Repo {
     return this.manifest;
   }
 
-  /** Eine Reise im Original aus dem Repository laden. */
+  /**
+   * Eine Reise im Original aus dem Repository laden.
+   *
+   * Gibt `null` zurück, wenn die Datei nirgends mehr existiert. Das ist kein
+   * Fehler: Das Verzeichnis stammt vom letzten Build, und eine Reise kann
+   * seitdem gelöscht worden sein.
+   */
   async loadTrip(file) {
     const repoPath = `${this.contentDir}/${file}`;
+    let missingInRepo = false;
+
     try {
       const response = await fetch(this.rawUrl(repoPath), { cache: 'no-store' });
       if (response.ok) return await response.json();
-      if (response.status !== 404) throw new Error(`HTTP ${response.status}`);
+      if (response.status === 404) missingInRepo = true;
+      else throw new Error(`HTTP ${response.status}`);
     } catch (error) {
       // Weiter zum Ausweichweg
     }
@@ -86,8 +95,9 @@ export class Repo {
     // bei Entwürfen, die noch nie veröffentlicht wurden.
     const slug = file.replace(/\.json$/, '');
     const response = await fetch(`${this.base}data/reisen/${encodeURIComponent(slug)}.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) throw new RepoError(`„${file}" konnte nicht geladen werden.`);
-    return response.json();
+    if (response.ok) return response.json();
+    if (response.status === 404 && missingInRepo) return null;
+    throw new RepoError(`„${file}" konnte nicht geladen werden.`);
   }
 
   /**
